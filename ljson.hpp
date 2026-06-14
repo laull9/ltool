@@ -76,6 +76,36 @@ namespace detail {
 template<class>
 struct dependent_false : std::false_type {};
 
+template<class...>
+using void_t = void;
+
+template<class T>
+struct remove_cvref {
+    using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
+};
+
+template<class T>
+using remove_cvref_t = typename remove_cvref<T>::type;
+
+template<class T, class = void>
+struct is_text_buffer_like : std::false_type {};
+
+template<class T>
+struct is_text_buffer_like<T,
+                           void_t<decltype(std::declval<const T&>().data()),
+                                  decltype(std::declval<const T&>().size())>>
+    : std::integral_constant<bool,
+                             std::is_convertible<decltype(std::declval<const T&>().data()),
+                                                 const char*>::value &&
+                                 std::is_convertible<decltype(std::declval<const T&>().size()),
+                                                     std::size_t>::value> {};
+
+template<class T>
+struct is_json_text_source
+    : std::integral_constant<bool,
+                             is_text_buffer_like<remove_cvref_t<T>>::value &&
+                                 !std::is_same<remove_cvref_t<T>, std::string>::value> {};
+
 #if LJSON_HAS_JSONCPP
 inline std::string jsoncpp_to_string(const Json::Value& value) {
     Json::StreamWriterBuilder builder;
@@ -142,6 +172,12 @@ public:
     json_view(const std::string& text)
         : data_(text.data()), size_(text.size()) {}
 
+    template<class Text,
+             typename std::enable_if<detail::is_json_text_source<Text>::value,
+                                     int>::type = 0>
+    json_view(const Text& text)
+        : data_(text.data()), size_(text.size()) {}
+
     const char* data() const noexcept {
         return data_;
     }
@@ -181,6 +217,12 @@ public:
 
     json(std::string text)
         : text_(std::move(text)) {}
+
+    template<class Text,
+             typename std::enable_if<detail::is_json_text_source<Text>::value,
+                                     int>::type = 0>
+    json(const Text& text)
+        : text_(text.data(), text.size()) {}
 
 #if LJSON_HAS_NLOHMANN_JSON
     json(const nlohmann::json& value)
