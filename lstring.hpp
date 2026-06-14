@@ -51,6 +51,8 @@
 #ifndef LSTRING_INCLUDE
 #define LSTRING_INCLUDE
 
+#include "lconfig.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -70,76 +72,45 @@
 #include <utility>
 #include <vector>
 
+#include "lfmt.hpp"
+
 #ifndef LSTRING_USE_EXTERNAL_FMT
-#define LSTRING_USE_EXTERNAL_FMT 0
+#define LSTRING_USE_EXTERNAL_FMT LTOOL_USE_EXTERNAL_FMT
 #endif // !LSTRING_USE_EXTERNAL_FMT
 
-#if LSTRING_USE_EXTERNAL_FMT
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-#include <fmt/std.h>
-#else
-#ifndef FMT_HEADER_ONLY
-#define FMT_HEADER_ONLY 1
-#define LSTRING_FMT_HEADER_ONLY_ADD 1
-#endif // !FMT_HEADER_ONLY
-#include "fmt/format.h"
-#include "fmt/ranges.h"
-#include "fmt/std.h"
-#ifdef LSTRING_FMT_HEADER_ONLY_ADD
-#undef FMT_HEADER_ONLY
-#endif // LSTRING_FMT_HEADER_ONLY_ADD
-#endif // LSTRING_USE_EXTERNAL_FMT
-
-#if __cplusplus >= 201703L
+#if LTOOL_HAS_CPP17
 #include <optional>
 #include <string_view>
-#endif // __cplusplus >= 201703L
+#endif // LTOOL_HAS_CPP17
 
-#if __cplusplus >= 201703L && __has_include(<filesystem>)
+#if LTOOL_HAS_FILESYSTEM
 #include <filesystem>
-#define LSTRING_HAS_FILESYSTEM 1
-#else
-#define LSTRING_HAS_FILESYSTEM 0
-#endif // __cplusplus >= 201703L && __has_include(<filesystem>)
+#endif // LTOOL_HAS_FILESYSTEM
+#define LSTRING_HAS_FILESYSTEM LTOOL_HAS_FILESYSTEM
 
-#if __cplusplus >= 202002L
+#if LTOOL_HAS_CPP20
 #include <concepts>
 #include <ranges>
 #include <span>
-#define LSTRING_HAS_RANGES 1
-#define LSTRING_HAS_SPAN 1
-#else
-#define LSTRING_HAS_RANGES 0
-#define LSTRING_HAS_SPAN 0
-#endif // __cplusplus >= 202002L
+#endif // LTOOL_HAS_CPP20
+#define LSTRING_HAS_RANGES LTOOL_HAS_RANGES
+#define LSTRING_HAS_SPAN LTOOL_HAS_SPAN
 
-#if __cplusplus >= 202002L && __has_include(<format>)
+#if LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE(<format>)
 #include <format>
-#endif // __cplusplus >= 202002L && __has_include(<format>)
+#endif // LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE(<format>)
+#define LSTRING_HAS_STD_FORMAT LTOOL_HAS_STD_FORMAT
 
-#if __cplusplus >= 202002L && defined(__cpp_lib_format)
-#define LSTRING_HAS_STD_FORMAT 1
-#else
-#define LSTRING_HAS_STD_FORMAT 0
-#endif // __cplusplus >= 202002L && defined(__cpp_lib_format)
-
-#if __cplusplus >= 201703L
-#define LSTRING_HAS_STD_OPTIONAL 1
-#else
-#define LSTRING_HAS_STD_OPTIONAL 0
-#endif // __cplusplus >= 201703L
+#define LSTRING_HAS_STD_OPTIONAL LTOOL_HAS_OPTIONAL
 
 #ifndef LSTRING_USE_MAGIC_ENUM
-#define LSTRING_USE_MAGIC_ENUM 1
+#define LSTRING_USE_MAGIC_ENUM LTOOL_USE_MAGIC_ENUM
 #endif // !LSTRING_USE_MAGIC_ENUM
 
-#if LSTRING_USE_MAGIC_ENUM && __cplusplus >= 201703L && __has_include(<magic_enum/magic_enum.hpp>)
+#if LTOOL_HAS_MAGIC_ENUM
 #include "magic_enum/magic_enum.hpp"
-#define LSTRING_HAS_MAGIC_ENUM 1
-#else
-#define LSTRING_HAS_MAGIC_ENUM 0
-#endif // LSTRING_USE_MAGIC_ENUM && __cplusplus >= 201703L && __has_include(<magic_enum/magic_enum.hpp>)
+#endif // LTOOL_HAS_MAGIC_ENUM
+#define LSTRING_HAS_MAGIC_ENUM LTOOL_HAS_MAGIC_ENUM
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -149,23 +120,15 @@
 #define NOMINMAX
 #endif // !NOMINMAX
 #include <windows.h>
-#elif __has_include(<iconv.h>)
+#elif LTOOL_HAS_ICONV
 #include <iconv.h>
-#define LSTRING_HAS_ICONV 1
-#else
-#define LSTRING_HAS_ICONV 0
 #endif // defined(_WIN32)
+#define LSTRING_HAS_ICONV LTOOL_HAS_ICONV
 
-#if defined(_WIN32) && !defined(LSTRING_HAS_ICONV)
-#define LSTRING_HAS_ICONV 0
-#endif // defined(_WIN32) && !defined(LSTRING_HAS_ICONV)
-
-#if __has_include(<re2/re2.h>)
+#if LTOOL_HAS_RE2
 #include <re2/re2.h>
-#define LSTRING_HAS_RE2 1
-#else
-#define LSTRING_HAS_RE2 0
-#endif // __has_include(<re2/re2.h>)
+#endif // LTOOL_HAS_RE2
+#define LSTRING_HAS_RE2 LTOOL_HAS_RE2
 
 /**
  * @brief lstring 边界转换 API 支持的文本编码。

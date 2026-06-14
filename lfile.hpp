@@ -53,12 +53,10 @@
 #include <utility>
 #include <vector>
 
-#if __cplusplus >= 201703L && __has_include(<filesystem>)
+#if LTOOL_HAS_FILESYSTEM
 #include <filesystem>
-#define LFILE_HAS_FILESYSTEM 1
-#else
-#define LFILE_HAS_FILESYSTEM 0
-#endif // __cplusplus >= 201703L && __has_include(<filesystem>)
+#endif // LTOOL_HAS_FILESYSTEM
+#define LFILE_HAS_FILESYSTEM LTOOL_HAS_FILESYSTEM
 
 #if !LFILE_HAS_FILESYSTEM
 #error "lfile requires C++17 std::filesystem support"

@@ -13,14 +13,14 @@
 ## 快速开始
 
 ```cpp
-#include "lstring.hpp"
-#include "lfile.hpp"
-#include "locked.hpp"
+#include "ltool.hpp"
 
 #include <iostream>
 #include <vector>
 
 int main() {
+    LLOG_INFO("ltool {}", ltool::version_string());
+
     lstring name = " ltool ";
     auto title = name.trimmed().upper_ascii();
 
@@ -51,9 +51,132 @@ c++ -std=c++20 -I. demo.cpp -o demo -liconv
 c++ -std=c++20 -I. demo.cpp -o demo
 ```
 
-如果只使用 `lstring.hpp`，核心能力可在较低标准下工作；`lfile.hpp` 需要 C++17 `std::filesystem`，`locked.hpp` 使用了 C++20 concepts。
+如果只使用 `lstring.hpp` 或 `llog.hpp`，核心能力可在 C++11 下工作；`lfile.hpp` 需要 C++17 `std::filesystem`，`locked.hpp` 使用了 C++20 concepts。
+
+## CMake 集成
+
+`ltool` 自己的 CMake 工程放在本目录，可以被外部项目直接作为子目录引入：
+
+```cmake
+add_subdirectory(path/to/ltool)
+target_link_libraries(your_target PRIVATE ltool::ltool)
+```
+
+也可以单独配置和安装：
+
+```bash
+cmake -S path/to/ltool -B build/ltool -DLTOOL_USE_RFL_JSON=OFF
+cmake --build build/ltool
+cmake --install build/ltool
+```
+
+仓库根目录的 `CMakeLists.txt` 只是本地 playground/test 工程，不再承载 ltool 的包定义和安装规则。
 
 ## 头文件一览
+
+### `ltool.hpp`
+
+`ltool.hpp` 是常用组件总入口，会引入 `lconfig.hpp`、`lstring.hpp`、`llog.hpp`、
+`ljson/ljson.hpp`、`lfile.hpp`、`locked.hpp` 和 `BS_thread_pool.hpp`。其中 `lfile.hpp` 只在检测到
+C++17 `std::filesystem` 时引入，`BS_thread_pool.hpp` 只在 C++17 起引入，
+`locked.hpp` 只在检测到 C++20 concepts 时引入。
+
+### `lconfig.hpp`
+
+`lconfig.hpp` 提供 ltool 版本、C++ 标准、平台、编译器和常用特性检测宏，例如
+`LTOOL_VERSION_STRING`、`LTOOL_HAS_CPP20`、`LTOOL_HAS_FILESYSTEM`、
+`LTOOL_PLATFORM_WINDOWS`，并提供 `ltool::version_string()`。
+
+### `lfmt.hpp`
+
+`lfmt.hpp` 是 ltool 内部统一的 fmt 引入入口。`lstring.hpp` 和 `llog.hpp` 都通过
+它处理内置 fmt、外部 fmt 和 header-only 配置，避免每个头文件重复维护 fmt 宏。
+
+### `llog.hpp`
+
+`llog` 是一个轻量级 header-only 日志工具，默认使用仓库内置 fmt 格式化文本。
+它支持运行时日志等级、编译期日志宏裁剪、自定义 sink，以及可选的调用位置输出。
+基础接口兼容 C++11；C++20 环境下会使用 `std::source_location` 获取更完整的调用位置。
+默认 sink 会在终端中自动彩色输出，并尊重 `NO_COLOR`、`CLICOLOR=0` 和
+`CLICOLOR_FORCE` 环境变量；也可以通过 `llog::set_color_mode()` 手动控制。
+
+示例：
+
+```cpp
+#include "llog.hpp"
+
+void log_example() {
+    llog::set_level(llog::level::debug);
+    llog::set_color_mode(llog::color_mode::automatic);
+    LLOG_INFO("user {} logged in", 42);
+    llog::warn("disk space is low");
+}
+```
+
+### `ljson/ljson.hpp`
+
+`ljson` 是 JSON 能力的统一入口，放在独立的 `ljson/` 目录下。它不把某一个 JSON
+库变成 ltool 的硬依赖，而是按头文件检测开启适配器。
+
+核心类型：
+
+- `ljson::json_view`：非拥有 JSON 文本视图，字符串输入路径零拷贝。
+- `ljson::json`：拥有 JSON 文本的统一中间表示，可从多个库的 DOM/文档生成。
+
+当前适配器：
+
+- nlohmann/json：检测 `<nlohmann/json.hpp>` 或 `<nlohmann.hpp>`，宏 `LJSON_HAS_NLOHMANN_JSON`。
+- JsonCpp/cppjson：检测 `<json/json.h>`，宏 `LJSON_HAS_JSONCPP` / `LJSON_HAS_CPPJSON`。
+- simdjson：C++17 起检测 `<simdjson.h>`，宏 `LJSON_HAS_SIMDJSON`。
+- yyjson：优先使用 ltool 内置的 `rfl/thirdparty/yyjson.h`；如果没有，则检测
+  `<yyjson.h>`，宏 `LJSON_HAS_YYJSON`。
+- rfl/json：默认开启；处于 C++20 且能找到 ltool 内置的 `"rfl/json.hpp"` 或外部
+  `<rfl/json.hpp>` 时，宏 `LJSON_HAS_STATIC_REFLECTION` 会变为 1。
+
+示例：
+
+```cpp
+#include "ljson/ljson.hpp"
+
+#include <string>
+
+void json_example() {
+    ljson::json text = R"({"name":"Ada","age":37})";
+
+#if LJSON_HAS_NLOHMANN_JSON
+    auto nlohmann_value = ljson::parse_nlohmann(text);
+    ljson::json from_nlohmann = nlohmann_value;
+#endif
+
+#if LJSON_HAS_JSONCPP
+    auto jsoncpp_value = ljson::parse_cppjson(text);
+    ljson::json from_jsoncpp = jsoncpp_value;
+#endif
+
+#if LJSON_HAS_SIMDJSON
+    auto simdjson_doc = ljson::parse_simdjson(text);
+    ljson::json from_simdjson = simdjson_doc;
+#endif
+
+#if LJSON_HAS_YYJSON
+    auto yyjson_doc = ljson::parse_yyjson(text);
+    ljson::json from_yyjson = yyjson_doc;
+#endif
+
+#if LJSON_HAS_STATIC_REFLECTION
+    struct User {
+        std::string name;
+        int age = 0;
+    };
+
+    auto rfl_text = ljson::json::from(User{"Ada", 37});
+    auto user = rfl_text.to<User>();
+
+    auto same_text = ljson::from(User{"Grace", 41});
+    auto same_user = ljson::to<User>(same_text);
+#endif
+}
+```
 
 ### `lstring.hpp`
 
@@ -171,11 +294,20 @@ void locked_example() {
 - `fmt/`：`lstring` 格式化能力依赖它，默认以 header-only 方式使用。
 - `magic_enum/`：C++17 起用于枚举名和枚举值互转。
 - `BS_thread_pool.hpp`：线程池头文件，当前 README 只列出依赖，具体接口请参考该头文件本身。
+- `nlohmann/json`、JsonCpp、simdjson、yyjson、`rfl/json`：`ljson` 可选适配；
+  检测到头文件和启用宏时才编译对应代码。
 
 可用宏：
 
 - `LSTRING_USE_EXTERNAL_FMT=1`：改为包含系统或包管理器提供的 `<fmt/...>`。
+- `LTOOL_USE_EXTERNAL_FMT=1`：让 `llog.hpp` 和 `lstring.hpp` 一起使用外部 fmt。
 - `LSTRING_USE_MAGIC_ENUM=0`：关闭 `magic_enum` 相关能力。
+- `LTOOL_USE_RFL_JSON=1`：尝试启用 `ljson` 的 reflect-cpp `rfl/json` 后端。
+- `LTOOL_USE_NLOHMANN_JSON=0`、`LTOOL_USE_JSONCPP=0`、`LTOOL_USE_SIMDJSON=0`、
+  `LTOOL_USE_YYJSON=0`：关闭对应 `ljson` 适配器检测。
+- `LTOOL_ACTIVE_LOG_LEVEL=LTOOL_LOG_LEVEL_WARN`：在预处理阶段裁剪更低等级的
+  `LLOG_TRACE`、`LLOG_DEBUG`、`LLOG_INFO` 日志宏。
+- `llog::set_color_mode(llog::color_mode::never)`：运行时关闭默认 sink 的彩色输出。
 
 GBK/GB2312 转换在 Windows 上使用系统代码页 API；在 Unix-like 平台上使用 `iconv`。如果平台没有可用 `iconv`，相关转换函数会抛出异常；如果链接时报 `iconv`、`iconv_open` 或 `iconv_close` 未定义，请在编译命令中追加 `-liconv`。
 
@@ -192,6 +324,12 @@ GBK/GB2312 转换在 Windows 上使用系统代码页 API；在 Unix-like 平台
 
 ```text
 .
+├── ltool.hpp
+├── lconfig.hpp
+├── lfmt.hpp
+├── llog.hpp
+├── ljson/
+│   └── ljson.hpp
 ├── lstring.hpp
 ├── lfile.hpp
 ├── locked.hpp
