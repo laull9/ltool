@@ -121,7 +121,8 @@ void log_example() {
 核心类型：
 
 - `LJson::JsonView`：非拥有 JSON 文本视图，字符串输入路径零拷贝。
-- `LJson::Json`：拥有 JSON 文本的统一中间表示，可从多个库的 DOM/文档生成。
+- `LJson::Json`：拥有 JSON 文本和内建 DOM 的统一中间表示，支持随机增删改查；
+  检测到外部 JSON 库时可作为转换入口/出口。
 
 当前适配器：
 
@@ -142,6 +143,15 @@ void log_example() {
 
 void json_example() {
     LJson::Json text = R"({"name":"Ada","age":37})";
+
+    text["age"] = 38;
+    text["skills"].push_back("math");
+    text.set_pointer("/profile/city", "London");
+
+    auto age = text.value("age", 0);
+    auto city = text.value_pointer<std::string>("/profile/city", "");
+    auto first_name = text.find_recursive("name");
+    text.erase_pointer("/skills/0");
 
 #if LJSON_HAS_NLOHMANN_JSON
     auto nlohmann_value = LJson::parse_nlohmann(text);
