@@ -1,9 +1,9 @@
 /**
- * @file lstring.hpp
+ * @file LString.hpp
  * @brief std::string 的纯头文件薄封装，附带常用文本、编码、格式化、正则、
  *        路径、哈希与 Base64/MD5 工具。
  *
- * lstring 的核心定位：
+ * LString 的核心定位：
  * - 内部只保存 std::string，默认把内容视为 UTF-8 字节。
  * - 与 std::string / string_view / C 字符串尽量自然互转。
  * - 基础操作如 size()、operator[]、find()、substr()、split() 都按字节语义工作；
@@ -31,27 +31,27 @@
  *
  * 常用示例：
  * @code
- * lstring s = " hello ";
+ * LString s = " hello ";
  * auto text = s.trimmed().upper_ascii();          // "HELLO"
- * auto parts = lstring("a,b,c").split(',');
- * auto joined = lstring::join(parts, "/");        // "a/b/c"
+ * auto parts = LString("a,b,c").split(',');
+ * auto joined = LString::join(parts, "/");        // "a/b/c"
  *
- * auto utf8 = lstring::from_gbk(gbk_bytes);
+ * auto utf8 = LString::from_gbk(gbk_bytes);
  * auto gbk = utf8.to_gbk();
  *
- * auto b64 = lstring("hello").base64_encoded();   // "aGVsbG8="
- * auto md5 = lstring("abc").md5();                // "900150983cd24fb0d6963f7d28e17f72"
+ * auto b64 = LString("hello").base64_encoded();   // "aGVsbG8="
+ * auto md5 = LString("abc").md5();                // "900150983cd24fb0d6963f7d28e17f72"
  *
  * enum class Color { Red, Blue };
- * auto name = lstring(Color::Red);                 // "Red"，启用 magic_enum 时
- * auto color = lstring("blue").to_enum<Color>(false);
+ * auto name = LString(Color::Red);                 // "Red"，启用 magic_enum 时
+ * auto color = LString("blue").to_enum<Color>(false);
  * @endcode
  */
 
 #ifndef LSTRING_INCLUDE
 #define LSTRING_INCLUDE
 
-#include "lconfig.hpp"
+#include "LConfig.hpp"
 
 #include <algorithm>
 #include <array>
@@ -72,7 +72,7 @@
 #include <utility>
 #include <vector>
 
-#include "lfmt.hpp"
+#include "LFmt.hpp"
 
 #ifndef LSTRING_USE_EXTERNAL_FMT
 #define LSTRING_USE_EXTERNAL_FMT LTOOL_USE_EXTERNAL_FMT
@@ -131,13 +131,13 @@
 #define LSTRING_HAS_RE2 LTOOL_HAS_RE2
 
 /**
- * @brief lstring 边界转换 API 支持的文本编码。
+ * @brief LString 边界转换 API 支持的文本编码。
  *
- * lstring 内部始终按 UTF-8 字节保存文本。这些枚举值用于 from_encoding()
- * 和 to_encoding()，表示外部字节进入或离开 lstring 时采用的编码。
+ * LString 内部始终按 UTF-8 字节保存文本。这些枚举值用于 from_encoding()
+ * 和 to_encoding()，表示外部字节进入或离开 LString 时采用的编码。
  */
 enum class LEncoding {
-    /// 让 lstring 推断最可能的输入编码。
+    /// 让 LString 推断最可能的输入编码。
     Unknown,
     /// 7 位 ASCII；严格模式下大于 0x7F 的字节非法。
     Ascii,
@@ -161,7 +161,7 @@ enum class LEncoding {
     Gb2312
 };
 
-namespace lstring_detail {
+namespace LStringDetail {
 
 #if __cplusplus >= 201703L
 using string_view = std::string_view;
@@ -192,7 +192,7 @@ public:
     string_view(const char* text, std::size_t size)
         : data_(text), size_(size) {
         if (!text && size != 0) {
-            throw std::invalid_argument("lstring_detail::string_view cannot reference null data");
+            throw std::invalid_argument("LStringDetail::string_view cannot reference null data");
         }
     }
 
@@ -225,7 +225,7 @@ public:
 
     string_view substr(std::size_t pos = 0, std::size_t count = npos) const {
         if (pos > size_) {
-            throw std::out_of_range("lstring_detail::string_view::substr");
+            throw std::out_of_range("LStringDetail::string_view::substr");
         }
         auto available = size_ - pos;
         auto n = count == npos || count > available ? available : count;
@@ -268,7 +268,7 @@ public:
     wstring_view(const wchar_t* text, std::size_t size)
         : data_(text), size_(size) {
         if (!text && size != 0) {
-            throw std::invalid_argument("lstring_detail::wstring_view cannot reference null data");
+            throw std::invalid_argument("LStringDetail::wstring_view cannot reference null data");
         }
     }
 
@@ -351,7 +351,7 @@ struct is_char_pointer
                   char>::value> {};
 
 template<class T>
-struct is_lstring_text_source
+struct is_LString_text_source
     : std::integral_constant<
           bool,
           std::is_same<remove_cvref_t<T>, char>::value ||
@@ -406,7 +406,7 @@ inline void append_utf8(std::string& out, char32_t cp) {
 }
 
 /// 从 @p i 解码下一个 UTF-8 标量值，并将 @p i 推进到已消费字节之后。
-inline optional<char32_t> next_utf8(lstring_detail::string_view text, std::size_t& i) {
+inline optional<char32_t> next_utf8(LStringDetail::string_view text, std::size_t& i) {
     if (i >= text.size()) {
         return nullopt;
     }
@@ -479,7 +479,7 @@ inline optional<char32_t> next_utf8(lstring_detail::string_view text, std::size_
 }
 
 /// 校验整段字节是否为合法 UTF-8。
-inline bool is_valid_utf8(lstring_detail::string_view text) {
+inline bool is_valid_utf8(LStringDetail::string_view text) {
     std::size_t i = 0;
     while (i < text.size()) {
         if (!next_utf8(text, i)) {
@@ -490,7 +490,7 @@ inline bool is_valid_utf8(lstring_detail::string_view text) {
 }
 
 /// 将 UTF-8 字节解码为 Unicode 标量值序列。
-inline std::vector<char32_t> decode_utf8(lstring_detail::string_view text, bool strict) {
+inline std::vector<char32_t> decode_utf8(LStringDetail::string_view text, bool strict) {
     std::vector<char32_t> out;
     out.reserve(text.size());
 
@@ -524,37 +524,37 @@ inline std::string encode_utf8(const std::vector<char32_t>& codepoints) {
 }
 
 /// 按字节检查前缀，供 BOM、路径和字符串辅助函数使用。
-inline bool has_prefix(lstring_detail::string_view text, lstring_detail::string_view prefix) noexcept {
+inline bool has_prefix(LStringDetail::string_view text, LStringDetail::string_view prefix) noexcept {
     return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
 }
 
 /// 显式长度的 UTF-8 字节序标记视图。
-inline lstring_detail::string_view utf8_bom() noexcept {
-    return lstring_detail::string_view("\xEF\xBB\xBF", 3);
+inline LStringDetail::string_view utf8_bom() noexcept {
+    return LStringDetail::string_view("\xEF\xBB\xBF", 3);
 }
 
 /// UTF-16 小端字节序标记。
-inline lstring_detail::string_view utf16le_bom() noexcept {
-    return lstring_detail::string_view("\xFF\xFE", 2);
+inline LStringDetail::string_view utf16le_bom() noexcept {
+    return LStringDetail::string_view("\xFF\xFE", 2);
 }
 
 /// UTF-16 大端字节序标记。
-inline lstring_detail::string_view utf16be_bom() noexcept {
-    return lstring_detail::string_view("\xFE\xFF", 2);
+inline LStringDetail::string_view utf16be_bom() noexcept {
+    return LStringDetail::string_view("\xFE\xFF", 2);
 }
 
 /// UTF-32 小端字节序标记。
-inline lstring_detail::string_view utf32le_bom() noexcept {
-    return lstring_detail::string_view("\xFF\xFE\x00\x00", 4);
+inline LStringDetail::string_view utf32le_bom() noexcept {
+    return LStringDetail::string_view("\xFF\xFE\x00\x00", 4);
 }
 
 /// UTF-32 大端字节序标记。
-inline lstring_detail::string_view utf32be_bom() noexcept {
-    return lstring_detail::string_view("\x00\x00\xFE\xFF", 4);
+inline LStringDetail::string_view utf32be_bom() noexcept {
+    return LStringDetail::string_view("\x00\x00\xFE\xFF", 4);
 }
 
 /// 按指定字节序从字节中读取 16 位整数。
-inline std::uint16_t read_u16(lstring_detail::string_view bytes, std::size_t pos, bool little) {
+inline std::uint16_t read_u16(LStringDetail::string_view bytes, std::size_t pos, bool little) {
     auto b0 = static_cast<unsigned char>(bytes[pos]);
     auto b1 = static_cast<unsigned char>(bytes[pos + 1]);
     if (little) {
@@ -564,7 +564,7 @@ inline std::uint16_t read_u16(lstring_detail::string_view bytes, std::size_t pos
 }
 
 /// 按指定字节序从字节中读取 32 位整数。
-inline std::uint32_t read_u32(lstring_detail::string_view bytes, std::size_t pos, bool little) {
+inline std::uint32_t read_u32(LStringDetail::string_view bytes, std::size_t pos, bool little) {
     auto b0 = static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[pos]));
     auto b1 = static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[pos + 1]));
     auto b2 = static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[pos + 2]));
@@ -602,7 +602,7 @@ inline void append_u32(std::string& out, std::uint32_t value, bool little) {
 }
 
 /// 将 UTF-16 字节解码为 Unicode 标量值序列。
-inline std::vector<char32_t> decode_utf16(lstring_detail::string_view bytes, bool little, bool strict) {
+inline std::vector<char32_t> decode_utf16(LStringDetail::string_view bytes, bool little, bool strict) {
     if (bytes.size() % 2 != 0 && strict) {
         throw std::runtime_error("odd-length UTF-16 byte sequence");
     }
@@ -645,7 +645,7 @@ inline std::vector<char32_t> decode_utf16(lstring_detail::string_view bytes, boo
 }
 
 /// 将 UTF-32 字节解码为 Unicode 标量值序列。
-inline std::vector<char32_t> decode_utf32(lstring_detail::string_view bytes, bool little, bool strict) {
+inline std::vector<char32_t> decode_utf32(LStringDetail::string_view bytes, bool little, bool strict) {
     if (bytes.size() % 4 != 0 && strict) {
         throw std::runtime_error("misaligned UTF-32 byte sequence");
     }
@@ -710,7 +710,7 @@ inline std::string encode_utf32(const std::vector<char32_t>& codepoints, bool li
 }
 
 /// 移除指定编码下可识别的 BOM，并返回剩余字节视图。
-inline lstring_detail::string_view trim_bom(lstring_detail::string_view bytes, LEncoding encoding) {
+inline LStringDetail::string_view trim_bom(LStringDetail::string_view bytes, LEncoding encoding) {
     if ((encoding == LEncoding::Utf8 || encoding == LEncoding::Utf8Bom ||
          encoding == LEncoding::Unknown) &&
         has_prefix(bytes, utf8_bom())) {
@@ -756,7 +756,7 @@ inline unsigned int windows_code_page(LEncoding encoding) {
 }
 
 /// 将 Windows 多字节代码页字节转换为宽字符串。
-inline std::wstring multibyte_to_wide(lstring_detail::string_view input, unsigned int code_page,
+inline std::wstring multibyte_to_wide(LStringDetail::string_view input, unsigned int code_page,
                                       bool strict) {
     if (input.empty()) {
         return {};
@@ -784,7 +784,7 @@ inline std::wstring multibyte_to_wide(lstring_detail::string_view input, unsigne
 }
 
 /// 将宽字符串转换为 Windows 多字节代码页字节。
-inline std::string wide_to_multibyte(lstring_detail::wstring_view input, unsigned int code_page,
+inline std::string wide_to_multibyte(LStringDetail::wstring_view input, unsigned int code_page,
                                      bool strict) {
     if (input.empty()) {
         return {};
@@ -834,11 +834,11 @@ inline const char* iconv_name(LEncoding encoding) {
 
 /// 判断 iconv 输出目标是否为本头文件使用的 UTF-8 名称。
 inline bool iconv_target_is_utf8(const char* to_encoding) noexcept {
-    return lstring_detail::string_view(to_encoding) == "UTF-8";
+    return LStringDetail::string_view(to_encoding) == "UTF-8";
 }
 
 /// 使用 iconv 在两个外部编码之间转换字节。
-inline std::string iconv_convert(lstring_detail::string_view input, const char* from_encoding,
+inline std::string iconv_convert(LStringDetail::string_view input, const char* from_encoding,
                                  const char* to_encoding, bool strict) {
 #if LSTRING_HAS_ICONV
     auto cd = iconv_open(to_encoding, from_encoding);
@@ -920,7 +920,7 @@ inline std::string iconv_convert(lstring_detail::string_view input, const char* 
 #endif // defined(_WIN32)
 
 /// 将平台宽字符串视图转换为 UTF-8。
-inline std::string wide_to_utf8(lstring_detail::wstring_view value, bool strict) {
+inline std::string wide_to_utf8(LStringDetail::wstring_view value, bool strict) {
     std::vector<char32_t> codepoints;
     codepoints.reserve(value.size());
 
@@ -961,7 +961,7 @@ inline std::string wide_to_utf8(lstring_detail::wstring_view value, bool strict)
 }
 
 /// 使用当前平台后端将 GBK/GB2312 字节转换为 UTF-8。
-inline std::string legacy_to_utf8(lstring_detail::string_view input, LEncoding encoding, bool strict) {
+inline std::string legacy_to_utf8(LStringDetail::string_view input, LEncoding encoding, bool strict) {
     if (!is_legacy_chinese_encoding(encoding)) {
         throw std::invalid_argument("encoding is not GBK/GB2312");
     }
@@ -975,7 +975,7 @@ inline std::string legacy_to_utf8(lstring_detail::string_view input, LEncoding e
 }
 
 /// 使用当前平台后端将 UTF-8 字节转换为 GBK/GB2312。
-inline std::string utf8_to_legacy(lstring_detail::string_view input, LEncoding encoding, bool strict) {
+inline std::string utf8_to_legacy(LStringDetail::string_view input, LEncoding encoding, bool strict) {
     if (!is_legacy_chinese_encoding(encoding)) {
         throw std::invalid_argument("encoding is not GBK/GB2312");
     }
@@ -989,7 +989,7 @@ inline std::string utf8_to_legacy(lstring_detail::string_view input, LEncoding e
 }
 
 /// 探测字节是否可以按某个中文传统编码解码。
-inline bool can_decode_legacy(lstring_detail::string_view input, LEncoding encoding) noexcept {
+inline bool can_decode_legacy(LStringDetail::string_view input, LEncoding encoding) noexcept {
     try {
         (void)legacy_to_utf8(input, encoding, true);
         return true;
@@ -1029,7 +1029,7 @@ inline int base64_value(char ch) noexcept {
 }
 
 /// 将任意字节编码为标准 Base64 文本。
-inline std::string base64_encode(lstring_detail::string_view bytes) {
+inline std::string base64_encode(LStringDetail::string_view bytes) {
     const char* table = base64_table();
     std::string out;
     out.reserve(((bytes.size() + 2) / 3) * 4);
@@ -1049,7 +1049,7 @@ inline std::string base64_encode(lstring_detail::string_view bytes) {
 }
 
 /// 解码 Base64 文本；strict 为 true 时遇到非法字符或非法填充会抛出异常。
-inline std::string base64_decode(lstring_detail::string_view encoded, bool strict) {
+inline std::string base64_decode(LStringDetail::string_view encoded, bool strict) {
     std::string clean;
     clean.reserve(encoded.size());
 
@@ -1139,7 +1139,7 @@ inline std::uint32_t md5_rotate_left(std::uint32_t value, std::uint32_t shift) n
 }
 
 /// 计算 MD5 的 16 字节摘要。
-inline std::array<unsigned char, 16> md5_digest(lstring_detail::string_view input) {
+inline std::array<unsigned char, 16> md5_digest(LStringDetail::string_view input) {
     static const std::uint32_t shifts[64] = {
         7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
         5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
@@ -1252,34 +1252,34 @@ inline std::string bytes_to_hex(const unsigned char* bytes, std::size_t size) {
 }
 
 /// 将 MD5 的 16 字节摘要转换为小写十六进制文本。
-inline std::string md5_hex(lstring_detail::string_view input) {
+inline std::string md5_hex(LStringDetail::string_view input) {
     auto digest = md5_digest(input);
     return bytes_to_hex(digest.data(), digest.size());
 }
 
 /// 将 std::string 适配为 string_view，供通用拼接类 API 使用。
-inline lstring_detail::string_view as_view(const std::string& value) noexcept {
+inline LStringDetail::string_view as_view(const std::string& value) noexcept {
     return value;
 }
 
-/// 保持 lstring_detail::string_view 不变，供通用拼接类 API 使用。
-inline lstring_detail::string_view as_view(lstring_detail::string_view value) noexcept {
+/// 保持 LStringDetail::string_view 不变，供通用拼接类 API 使用。
+inline LStringDetail::string_view as_view(LStringDetail::string_view value) noexcept {
     return value;
 }
 
 /// 将 C 字符串适配为 string_view；nullptr 视为空字符串。
-inline lstring_detail::string_view as_view(const char* value) noexcept {
-    return value ? lstring_detail::string_view(value) : lstring_detail::string_view();
+inline LStringDetail::string_view as_view(const char* value) noexcept {
+    return value ? LStringDetail::string_view(value) : LStringDetail::string_view();
 }
 
 /// 禁止把单个 char 误当作 string_view。
-inline lstring_detail::string_view as_view(char value) = delete;
+inline LStringDetail::string_view as_view(char value) = delete;
 
 #if LSTRING_HAS_RANGES
 /// 表示可无损视作 string_view 的类型。
 template<class T>
 concept StringLike = requires(const T& value) {
-    { as_view(value) } -> std::convertible_to<lstring_detail::string_view>;
+    { as_view(value) } -> std::convertible_to<LStringDetail::string_view>;
 };
 
 /// 判断一个 range 是否产出 char 字节。
@@ -1289,16 +1289,16 @@ concept CharRange =
     std::same_as<std::remove_cvref_t<std::ranges::range_value_t<Range>>, char>;
 #endif // LSTRING_HAS_RANGES
 
-} // namespace lstring_detail
+} // namespace LStringDetail
 
 /**
  * @brief 围绕 std::string 的纯头文件薄封装，并提供 UTF-8 方向的辅助能力。
  *
- * lstring 在存储、索引、长度、迭代器和大多数字节级操作上刻意保持
+ * LString 在存储、索引、长度、迭代器和大多数字节级操作上刻意保持
  * std::string 语义。Unicode 转换函数会把内部字节视为 UTF-8；除非特别说明，
  * substr()、find()、split()、trim() 等基础操作都按字节或 ASCII 分隔符工作。
  */
-class lstring {
+class LString {
 private:
     std::string data_;
 
@@ -1313,29 +1313,29 @@ public:
     static constexpr size_type npos = std::string::npos;
 
     /// 创建空字符串。
-    lstring() = default;
+    LString() = default;
 
-    /// 复制另一个 lstring，精确保留其存储字节。
-    lstring(const lstring&) = default;
+    /// 复制另一个 LString，精确保留其存储字节。
+    LString(const LString&) = default;
 
-    /// 移动另一个 lstring，不改变字节内容。
-    lstring(lstring&&) noexcept = default;
+    /// 移动另一个 LString，不改变字节内容。
+    LString(LString&&) noexcept = default;
 
-    /// 从另一个 lstring 复制赋值。
-    lstring& operator=(const lstring&) = default;
+    /// 从另一个 LString 复制赋值。
+    LString& operator=(const LString&) = default;
 
-    /// 从另一个 lstring 移动赋值。
-    lstring& operator=(lstring&&) noexcept = default;
+    /// 从另一个 LString 移动赋值。
+    LString& operator=(LString&&) noexcept = default;
 
     /// 从以 NUL 结尾的 C 字符串构造；nullptr 视为空字符串。
-    lstring(const char* value)
+    LString(const char* value)
         : data_(value ? value : "") {}
 
     /// 从带显式长度的字节缓冲区构造。
-    lstring(const char* value, size_type count) {
+    LString(const char* value, size_type count) {
         if (!value) {
             if (count != 0) {
-                throw std::invalid_argument("lstring cannot copy non-empty null data");
+                throw std::invalid_argument("LString cannot copy non-empty null data");
             }
             return;
         }
@@ -1343,82 +1343,82 @@ public:
     }
 
     /// 构造包含 @p count 个 @p value 字节的字符串。
-    lstring(char value, size_type count = 1)
+    LString(char value, size_type count = 1)
         : data_(count, value) {}
 
     /// 接管已有 std::string 的内容。
-    lstring(std::string value)
+    LString(std::string value)
         : data_(std::move(value)) {}
 
-    /// 从 lstring_detail::string_view 复制字节。
-    lstring(lstring_detail::string_view value)
+    /// 从 LStringDetail::string_view 复制字节。
+    LString(LStringDetail::string_view value)
         : data_(value) {}
 
 #if LSTRING_HAS_FILESYSTEM
     /// 使用 path::string() 从文件系统路径构造。
-    lstring(const std::filesystem::path& path)
+    LString(const std::filesystem::path& path)
         : data_(path.string()) {}
 #endif // LSTRING_HAS_FILESYSTEM
 
     /// 将宽字符串转换为内部 UTF-8 存储。
-    lstring(lstring_detail::wstring_view value)
+    LString(LStringDetail::wstring_view value)
         : data_(from_wstring(value).data_) {}
 
 #if LSTRING_HAS_MAGIC_ENUM
     /// 使用 magic_enum 将枚举值序列化为枚举项名称；未知值得到空字符串。
     template<class E,
-             typename std::enable_if<std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
+             typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
                                      int>::type = 0>
-    lstring(E value)
+    LString(E value)
         : data_(std::string(magic_enum::enum_name(value))) {}
 #endif // LSTRING_HAS_MAGIC_ENUM
 
 #if LSTRING_HAS_RANGES
     /// 从任意 char range 复制字节；字符串类已有专门构造函数，因此这里排除它们。
     template<class Range>
-        requires lstring_detail::CharRange<Range> &&
-                 (!lstring_detail::StringLike<std::remove_cvref_t<Range>>) &&
-                 (!std::same_as<std::remove_cvref_t<Range>, lstring>)
-    explicit lstring(Range&& range) {
+        requires LStringDetail::CharRange<Range> &&
+                 (!LStringDetail::StringLike<std::remove_cvref_t<Range>>) &&
+                 (!std::same_as<std::remove_cvref_t<Range>, LString>)
+    explicit LString(Range&& range) {
         append_range(std::forward<Range>(range));
     }
 
     /// 从任意 fmt 可格式化对象构造；字符串和 char range 保持原有字节语义。
     template<class T>
-        requires fmt::is_formattable<lstring_detail::remove_cvref_t<T>, char>::value &&
-                 (!lstring_detail::is_lstring_text_source<T>::value) &&
-                 (!lstring_detail::is_magic_enum_source<T>::value) &&
-                 (!std::same_as<lstring_detail::remove_cvref_t<T>, lstring>) &&
-                 (!lstring_detail::CharRange<T>)
-    lstring(const T& value)
+        requires fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
+                 (!LStringDetail::is_LString_text_source<T>::value) &&
+                 (!LStringDetail::is_magic_enum_source<T>::value) &&
+                 (!std::same_as<LStringDetail::remove_cvref_t<T>, LString>) &&
+                 (!LStringDetail::CharRange<T>)
+    LString(const T& value)
         : data_(fmt::format("{}", value)) {}
 #else
     /// 从任意 fmt 可格式化对象构造；字符串来源保持原有字节语义。
     template<class T,
              typename std::enable_if<
-                 fmt::is_formattable<lstring_detail::remove_cvref_t<T>, char>::value &&
-                     !lstring_detail::is_lstring_text_source<T>::value &&
-                     !lstring_detail::is_magic_enum_source<T>::value &&
-                     !std::is_same<lstring_detail::remove_cvref_t<T>, lstring>::value,
+                 fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
+                     !LStringDetail::is_LString_text_source<T>::value &&
+                     !LStringDetail::is_magic_enum_source<T>::value &&
+                     !std::is_same<LStringDetail::remove_cvref_t<T>, LString>::value,
                  int>::type = 0>
-    lstring(const T& value)
+    LString(const T& value)
         : data_(fmt::format("{}", value)) {}
 #endif // LSTRING_HAS_RANGES
 
     /// 从以 NUL 结尾的 C 字符串赋值；nullptr 视为空字符串。
-    lstring& operator=(const char* value) {
+    LString& operator=(const char* value) {
         data_ = value ? value : "";
         return *this;
     }
 
     /// 从 std::string 移动字节赋值。
-    lstring& operator=(std::string value) {
+    LString& operator=(std::string value) {
         data_ = std::move(value);
         return *this;
     }
 
-    /// 从 lstring_detail::string_view 复制字节赋值。
-    lstring& operator=(lstring_detail::string_view value) {
+    /// 从 LStringDetail::string_view 复制字节赋值。
+    LString& operator=(LStringDetail::string_view value) {
         data_ = value;
         return *this;
     }
@@ -1426,9 +1426,9 @@ public:
 #if LSTRING_HAS_MAGIC_ENUM
     /// 使用 magic_enum 将枚举值序列化为枚举项名称并赋值；未知值得到空字符串。
     template<class E,
-             typename std::enable_if<std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
+             typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
                                      int>::type = 0>
-    lstring& operator=(E value) {
+    LString& operator=(E value) {
         data_ = std::string(magic_enum::enum_name(value));
         return *this;
     }
@@ -1437,12 +1437,12 @@ public:
 #if LSTRING_HAS_RANGES
     /// 使用 fmt 将任意可格式化对象字符串化后赋值。
     template<class T>
-        requires fmt::is_formattable<lstring_detail::remove_cvref_t<T>, char>::value &&
-                 (!lstring_detail::is_lstring_text_source<T>::value) &&
-                 (!lstring_detail::is_magic_enum_source<T>::value) &&
-                 (!std::same_as<lstring_detail::remove_cvref_t<T>, lstring>) &&
-                 (!lstring_detail::CharRange<T>)
-    lstring& operator=(const T& value) {
+        requires fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
+                 (!LStringDetail::is_LString_text_source<T>::value) &&
+                 (!LStringDetail::is_magic_enum_source<T>::value) &&
+                 (!std::same_as<LStringDetail::remove_cvref_t<T>, LString>) &&
+                 (!LStringDetail::CharRange<T>)
+    LString& operator=(const T& value) {
         data_ = fmt::format("{}", value);
         return *this;
     }
@@ -1450,12 +1450,12 @@ public:
     /// 使用 fmt 将任意可格式化对象字符串化后赋值。
     template<class T,
              typename std::enable_if<
-                 fmt::is_formattable<lstring_detail::remove_cvref_t<T>, char>::value &&
-                     !lstring_detail::is_lstring_text_source<T>::value &&
-                     !lstring_detail::is_magic_enum_source<T>::value &&
-                     !std::is_same<lstring_detail::remove_cvref_t<T>, lstring>::value,
+                 fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
+                     !LStringDetail::is_LString_text_source<T>::value &&
+                     !LStringDetail::is_magic_enum_source<T>::value &&
+                     !std::is_same<LStringDetail::remove_cvref_t<T>, LString>::value,
                  int>::type = 0>
-    lstring& operator=(const T& value) {
+    LString& operator=(const T& value) {
         data_ = fmt::format("{}", value);
         return *this;
     }
@@ -1471,13 +1471,13 @@ public:
         return data_;
     }
 
-    /// 从右值 lstring 中移出底层 std::string。
+    /// 从右值 LString 中移出底层 std::string。
     operator std::string() && noexcept {
         return std::move(data_);
     }
 
     /// 隐式生成存储字节的只读视图。
-    operator lstring_detail::string_view() const noexcept {
+    operator LStringDetail::string_view() const noexcept {
         return data_;
     }
 
@@ -1491,19 +1491,19 @@ public:
         return data_;
     }
 
-    /// 从右值 lstring 中移出底层 std::string。
+    /// 从右值 LString 中移出底层 std::string。
     std::string&& str() && noexcept {
         return std::move(data_);
     }
 
     /// 返回指向存储字节的非拥有视图。
-    lstring_detail::string_view view() const noexcept {
+    LStringDetail::string_view view() const noexcept {
         return data_;
     }
 
-    /// 返回非拥有的字节子视图；pos 越界时行为同 lstring_detail::string_view::substr。
-    lstring_detail::string_view subview(size_type pos = 0, size_type count = npos) const {
-        return lstring_detail::string_view(data_).substr(pos, count);
+    /// 返回非拥有的字节子视图；pos 越界时行为同 LStringDetail::string_view::substr。
+    LStringDetail::string_view subview(size_type pos = 0, size_type count = npos) const {
+        return LStringDetail::string_view(data_).substr(pos, count);
     }
 
     /// 返回以 NUL 结尾的指针；下次修改前保持有效。
@@ -1673,13 +1673,13 @@ public:
     }
 
     /// 从 string_view 追加原始字节，并返回 *this 以便链式调用。
-    lstring& append(lstring_detail::string_view value) {
+    LString& append(LStringDetail::string_view value) {
         data_.append(value);
         return *this;
     }
 
     /// 追加一个字节/字符，并返回 *this 以便链式调用。
-    lstring& append(char value) {
+    LString& append(char value) {
         data_.push_back(value);
         return *this;
     }
@@ -1687,8 +1687,8 @@ public:
 #if LSTRING_HAS_RANGES
     /// 追加任意 char range 产生的字节，并返回 *this 以便链式调用。
     template<class Range>
-        requires lstring_detail::CharRange<Range>
-    lstring& append_range(Range&& range) {
+        requires LStringDetail::CharRange<Range>
+    LString& append_range(Range&& range) {
         if constexpr (std::ranges::sized_range<Range>) {
             data_.reserve(data_.size() + static_cast<size_type>(std::ranges::size(range)));
         }
@@ -1700,17 +1700,17 @@ public:
 
     /// 清空当前内容，并用 char range 产生的字节重新赋值。
     template<class Range>
-        requires lstring_detail::CharRange<Range>
-    lstring& assign_range(Range&& range) {
+        requires LStringDetail::CharRange<Range>
+    LString& assign_range(Range&& range) {
         data_.clear();
         return append_range(std::forward<Range>(range));
     }
 
-    /// 从任意 char range 构造 lstring，适合 CTAD 不方便的调用点。
+    /// 从任意 char range 构造 LString，适合 CTAD 不方便的调用点。
     template<class Range>
-        requires lstring_detail::CharRange<Range>
-    static lstring from_range(Range&& range) {
-        lstring out;
+        requires LStringDetail::CharRange<Range>
+    static LString from_range(Range&& range) {
+        LString out;
         out.append_range(std::forward<Range>(range));
         return out;
     }
@@ -1722,121 +1722,121 @@ public:
      * 在 fmt 支持的场景下，格式字符串会进行编译期检查。
      */
     template<class... Args>
-    lstring& append_format(fmt::format_string<Args...> fmtstr, Args&&... args) {
+    LString& append_format(fmt::format_string<Args...> fmtstr, Args&&... args) {
         fmt::format_to(std::back_inserter(data_), fmtstr, std::forward<Args>(args)...);
         return *this;
     }
 
     /// 从 string_view 追加原始字节。
-    lstring& operator+=(lstring_detail::string_view value) {
+    LString& operator+=(LStringDetail::string_view value) {
         return append(value);
     }
 
     /// 追加以 NUL 结尾的 C 字符串；nullptr 不追加任何内容。
-    lstring& operator+=(const char* value) {
-        return append(value ? lstring_detail::string_view(value) : lstring_detail::string_view());
+    LString& operator+=(const char* value) {
+        return append(value ? LStringDetail::string_view(value) : LStringDetail::string_view());
     }
 
     /// 追加一个字节/字符。
-    lstring& operator+=(char value) {
+    LString& operator+=(char value) {
         return append(value);
     }
 
-    /// 拼接 lstring 与类字符串字节。
-    friend lstring operator+(lstring lhs, lstring_detail::string_view rhs) {
+    /// 拼接 LString 与类字符串字节。
+    friend LString operator+(LString lhs, LStringDetail::string_view rhs) {
         lhs += rhs;
         return lhs;
     }
 
-    /// 拼接类字符串字节与 lstring。
-    friend lstring operator+(lstring_detail::string_view lhs, const lstring& rhs) {
-        lstring out(lhs);
+    /// 拼接类字符串字节与 LString。
+    friend LString operator+(LStringDetail::string_view lhs, const LString& rhs) {
+        LString out(lhs);
         out += rhs.view();
         return out;
     }
 
 #if __cplusplus >= 202002L
     /// 按字节字典序进行三路比较。
-    friend auto operator<=>(const lstring&, const lstring&) = default;
+    friend auto operator<=>(const LString&, const LString&) = default;
 #endif // __cplusplus >= 202002L
 
-    /// 按存储字节比较两个 lstring。
-    friend bool operator==(const lstring& lhs, const lstring& rhs) noexcept {
+    /// 按存储字节比较两个 LString。
+    friend bool operator==(const LString& lhs, const LString& rhs) noexcept {
         return lhs.view() == rhs.view();
     }
 
-    /// 按字节比较 lstring 与 string_view。
-    friend bool operator==(const lstring& lhs, lstring_detail::string_view rhs) noexcept {
+    /// 按字节比较 LString 与 string_view。
+    friend bool operator==(const LString& lhs, LStringDetail::string_view rhs) noexcept {
         return lhs.view() == rhs;
     }
 
-    /// 按字节比较 string_view 与 lstring。
-    friend bool operator==(lstring_detail::string_view lhs, const lstring& rhs) noexcept {
+    /// 按字节比较 string_view 与 LString。
+    friend bool operator==(LStringDetail::string_view lhs, const LString& rhs) noexcept {
         return lhs == rhs.view();
     }
 
-    /// 按字节比较 lstring 与 std::string，避免隐式转换二义性。
-    friend bool operator==(const lstring& lhs, const std::string& rhs) noexcept {
-        return lhs.view() == lstring_detail::string_view(rhs);
+    /// 按字节比较 LString 与 std::string，避免隐式转换二义性。
+    friend bool operator==(const LString& lhs, const std::string& rhs) noexcept {
+        return lhs.view() == LStringDetail::string_view(rhs);
     }
 
-    /// 按字节比较 std::string 与 lstring，避免隐式转换二义性。
-    friend bool operator==(const std::string& lhs, const lstring& rhs) noexcept {
-        return lstring_detail::string_view(lhs) == rhs.view();
+    /// 按字节比较 std::string 与 LString，避免隐式转换二义性。
+    friend bool operator==(const std::string& lhs, const LString& rhs) noexcept {
+        return LStringDetail::string_view(lhs) == rhs.view();
     }
 
-    /// 按字节比较 lstring 与 C 字符串；nullptr 视为空字符串。
-    friend bool operator==(const lstring& lhs, const char* rhs) noexcept {
-        return lhs.view() == (rhs ? lstring_detail::string_view(rhs) : lstring_detail::string_view());
+    /// 按字节比较 LString 与 C 字符串；nullptr 视为空字符串。
+    friend bool operator==(const LString& lhs, const char* rhs) noexcept {
+        return lhs.view() == (rhs ? LStringDetail::string_view(rhs) : LStringDetail::string_view());
     }
 
-    /// 按字节比较 C 字符串与 lstring；nullptr 视为空字符串。
-    friend bool operator==(const char* lhs, const lstring& rhs) noexcept {
-        return (lhs ? lstring_detail::string_view(lhs) : lstring_detail::string_view()) == rhs.view();
+    /// 按字节比较 C 字符串与 LString；nullptr 视为空字符串。
+    friend bool operator==(const char* lhs, const LString& rhs) noexcept {
+        return (lhs ? LStringDetail::string_view(lhs) : LStringDetail::string_view()) == rhs.view();
     }
 
     /// 将存储字节写入 ostream。
-    friend std::ostream& operator<<(std::ostream& os, const lstring& value) {
+    friend std::ostream& operator<<(std::ostream& os, const LString& value) {
         return os.write(value.data(), static_cast<std::streamsize>(value.size()));
     }
 
     /// 判断字节子串是否出现在任意位置。
-    bool contains(lstring_detail::string_view needle) const noexcept {
+    bool contains(LStringDetail::string_view needle) const noexcept {
         return data_.find(needle) != npos;
     }
 
     /// 判断字符串是否以指定字节前缀开头。
-    bool starts_with(lstring_detail::string_view prefix) const noexcept {
-        return lstring_detail::has_prefix(view(), prefix);
+    bool starts_with(LStringDetail::string_view prefix) const noexcept {
+        return LStringDetail::has_prefix(view(), prefix);
     }
 
     /// 判断字符串是否以指定字节后缀结尾。
-    bool ends_with(lstring_detail::string_view suffix) const noexcept {
+    bool ends_with(LStringDetail::string_view suffix) const noexcept {
         return data_.size() >= suffix.size() &&
-               lstring_detail::string_view(data_.data() + data_.size() - suffix.size(),
+               LStringDetail::string_view(data_.data() + data_.size() - suffix.size(),
                                             suffix.size()) == suffix;
     }
 
     /// 从 @p pos 开始查找字节子串；不存在时返回 npos。
-    size_type find(lstring_detail::string_view needle, size_type pos = 0) const noexcept {
+    size_type find(LStringDetail::string_view needle, size_type pos = 0) const noexcept {
         return data_.find(needle, pos);
     }
 
     /// 查找 @p pos 之前或当前位置最后一次出现的字节子串。
-    size_type rfind(lstring_detail::string_view needle, size_type pos = npos) const noexcept {
+    size_type rfind(LStringDetail::string_view needle, size_type pos = npos) const noexcept {
         return data_.rfind(needle, pos);
     }
 
     /// 返回拥有所有权的字节子串。
-    lstring substr(size_type pos = 0, size_type count = npos) const {
+    LString substr(size_type pos = 0, size_type count = npos) const {
         return data_.substr(pos, count);
     }
 
     /// 返回将当前字节序列重复 @p count 次形成的新字符串。
-    lstring repeat(size_type count) const {
-        lstring out;
+    LString repeat(size_type count) const {
+        LString out;
         if (!data_.empty() && count > data_.max_size() / data_.size()) {
-            throw std::length_error("lstring repeat result is too large");
+            throw std::length_error("LString repeat result is too large");
         }
         out.data_.reserve(data_.size() * count);
         for (size_type i = 0; i < count; ++i) {
@@ -1846,32 +1846,32 @@ public:
     }
 
     /// 在 @p pos 处插入字节，并返回 *this。
-    lstring& insert(size_type pos, lstring_detail::string_view value) {
+    LString& insert(size_type pos, LStringDetail::string_view value) {
         data_.insert(pos, value);
         return *this;
     }
 
     /// 从 @p pos 开始删除 @p count 个字节，并返回 *this。
-    lstring& erase(size_type pos = 0, size_type count = npos) {
+    LString& erase(size_type pos = 0, size_type count = npos) {
         data_.erase(pos, count);
         return *this;
     }
 
     /// 用 @p value 替换 @p pos 处开始的 @p count 个字节，并返回 *this。
-    lstring& replace(size_type pos, size_type count, lstring_detail::string_view value) {
+    LString& replace(size_type pos, size_type count, LStringDetail::string_view value) {
         data_.replace(pos, count, value);
         return *this;
     }
 
     /// 返回副本，其中每个非重叠的 @p from 都被替换。
-    lstring replaced_all(lstring_detail::string_view from, lstring_detail::string_view to) const {
-        lstring out(*this);
+    LString replaced_all(LStringDetail::string_view from, LStringDetail::string_view to) const {
+        LString out(*this);
         out.replace_all(from, to);
         return out;
     }
 
     /// 原地替换每个非重叠的 @p from；空 @p from 会被忽略。
-    lstring& replace_all(lstring_detail::string_view from, lstring_detail::string_view to) {
+    LString& replace_all(LStringDetail::string_view from, LStringDetail::string_view to) {
         if (from.empty()) {
             return *this;
         }
@@ -1885,7 +1885,7 @@ public:
     }
 
     /// 仅在存在 @p prefix 时移除该前缀。
-    lstring& remove_prefix(lstring_detail::string_view prefix) {
+    LString& remove_prefix(LStringDetail::string_view prefix) {
         if (starts_with(prefix)) {
             data_.erase(0, prefix.size());
         }
@@ -1893,7 +1893,7 @@ public:
     }
 
     /// 仅在存在 @p suffix 时移除该后缀。
-    lstring& remove_suffix(lstring_detail::string_view suffix) {
+    LString& remove_suffix(LStringDetail::string_view suffix) {
         if (ends_with(suffix)) {
             data_.erase(data_.size() - suffix.size());
         }
@@ -1907,51 +1907,51 @@ public:
     }
 
     /// 返回移除首尾 ASCII 空白后的副本。
-    lstring trimmed() const {
+    LString trimmed() const {
         auto first = std::find_if_not(data_.begin(), data_.end(), is_space_ascii);
         auto last = std::find_if_not(data_.rbegin(), data_.rend(), is_space_ascii).base();
         if (first >= last) {
             return {};
         }
-        return lstring_detail::string_view(&*first, static_cast<size_type>(last - first));
+        return LStringDetail::string_view(&*first, static_cast<size_type>(last - first));
     }
 
     /// 返回移除开头 ASCII 空白后的副本。
-    lstring ltrimmed() const {
+    LString ltrimmed() const {
         auto first = std::find_if_not(data_.begin(), data_.end(), is_space_ascii);
         if (first == data_.end()) {
             return {};
         }
-        return lstring_detail::string_view(&*first, static_cast<size_type>(data_.end() - first));
+        return LStringDetail::string_view(&*first, static_cast<size_type>(data_.end() - first));
     }
 
     /// 返回移除结尾 ASCII 空白后的副本。
-    lstring rtrimmed() const {
+    LString rtrimmed() const {
         auto last = std::find_if_not(data_.rbegin(), data_.rend(), is_space_ascii).base();
-        return lstring_detail::string_view(data_.data(), static_cast<size_type>(last - data_.begin()));
+        return LStringDetail::string_view(data_.data(), static_cast<size_type>(last - data_.begin()));
     }
 
     /// 原地移除首尾 ASCII 空白。
-    lstring& trim() {
+    LString& trim() {
         *this = trimmed();
         return *this;
     }
 
     /// 原地移除开头 ASCII 空白。
-    lstring& ltrim() {
+    LString& ltrim() {
         *this = ltrimmed();
         return *this;
     }
 
     /// 原地移除结尾 ASCII 空白。
-    lstring& rtrim() {
+    LString& rtrim() {
         *this = rtrimmed();
         return *this;
     }
 
     /// 返回仅转换 ASCII 大写字母的小写副本；非 ASCII 字节保持不变。
-    lstring lower_ascii() const {
-        lstring out(*this);
+    LString lower_ascii() const {
+        LString out(*this);
         std::transform(out.data_.begin(), out.data_.end(), out.data_.begin(), [](unsigned char c) {
             if (c >= 'A' && c <= 'Z') {
                 return static_cast<char>(c - 'A' + 'a');
@@ -1962,8 +1962,8 @@ public:
     }
 
     /// 返回仅转换 ASCII 小写字母的大写副本；非 ASCII 字节保持不变。
-    lstring upper_ascii() const {
-        lstring out(*this);
+    LString upper_ascii() const {
+        LString out(*this);
         std::transform(out.data_.begin(), out.data_.end(), out.data_.begin(), [](unsigned char c) {
             if (c >= 'a' && c <= 'z') {
                 return static_cast<char>(c - 'a' + 'A');
@@ -1980,9 +1980,9 @@ public:
      * @param keep_empty 是否保留相邻分隔符之间的空字段。
      * @param max_parts 最大结果数量；0 表示不限制。
      */
-    std::vector<lstring> split(lstring_detail::string_view delimiter, bool keep_empty = false,
+    std::vector<LString> split(LStringDetail::string_view delimiter, bool keep_empty = false,
                                size_type max_parts = 0) const {
-        std::vector<lstring> out;
+        std::vector<LString> out;
         if (delimiter.empty()) {
             out.reserve(data_.size());
             for (char ch : data_) {
@@ -2017,12 +2017,12 @@ public:
     }
 
     /// 按单字节分隔符切分。
-    std::vector<lstring> split(char delimiter, bool keep_empty = false, size_type max_parts = 0) const {
-        return split(lstring_detail::string_view(&delimiter, 1), keep_empty, max_parts);
+    std::vector<LString> split(char delimiter, bool keep_empty = false, size_type max_parts = 0) const {
+        return split(LStringDetail::string_view(&delimiter, 1), keep_empty, max_parts);
     }
 
     /// 按 '\n' 切分行，并移除每行末尾的 '\r'。
-    std::vector<lstring> lines(bool keep_empty = true) const {
+    std::vector<LString> lines(bool keep_empty = true) const {
         auto raw = split('\n', keep_empty);
         for (auto& line : raw) {
             line.remove_suffix("\r");
@@ -2031,20 +2031,20 @@ public:
     }
 
     /// 将 join() 中的单个 char 元素追加到输出。
-    static void append_join_part(lstring& out, char part) {
+    static void append_join_part(LString& out, char part) {
         out += part;
     }
 
     /// 将 join() 中的类字符串元素追加到输出。
     template<class Part>
-    static void append_join_part(lstring& out, const Part& part) {
+    static void append_join_part(LString& out, const Part& part) {
         out += part;
     }
 
     /// 使用字节分隔符拼接一段类字符串 range。
     template<class Range>
-    static lstring join(const Range& parts, lstring_detail::string_view delimiter) {
-        lstring out;
+    static LString join(const Range& parts, LStringDetail::string_view delimiter) {
+        LString out;
         bool first = true;
         for (auto it = std::begin(parts); it != std::end(parts); ++it) {
             if (!first) {
@@ -2057,27 +2057,27 @@ public:
     }
 
     /// 使用字节分隔符拼接 initializer_list<string_view>。
-    static lstring join(std::initializer_list<lstring_detail::string_view> parts, lstring_detail::string_view delimiter) {
-        return join<std::initializer_list<lstring_detail::string_view>>(parts, delimiter);
+    static LString join(std::initializer_list<LStringDetail::string_view> parts, LStringDetail::string_view delimiter) {
+        return join<std::initializer_list<LStringDetail::string_view>>(parts, delimiter);
     }
 
-    /// 使用 fmt 格式化，并以 lstring 返回结果。
+    /// 使用 fmt 格式化，并以 LString 返回结果。
     template<class... Args>
-    static lstring format(fmt::format_string<Args...> fmtstr, Args&&... args) {
+    static LString format(fmt::format_string<Args...> fmtstr, Args&&... args) {
         return fmt::format(fmtstr, std::forward<Args>(args)...);
     }
 
 #if LSTRING_HAS_STD_FORMAT
     /// 使用 std::format 格式化并追加结果。
     template<class... Args>
-    lstring& append_std_format(std::format_string<Args...> fmtstr, Args&&... args) {
+    LString& append_std_format(std::format_string<Args...> fmtstr, Args&&... args) {
         data_ += std::format(fmtstr, std::forward<Args>(args)...);
         return *this;
     }
 
-    /// 使用 std::format 格式化并返回 lstring。
+    /// 使用 std::format 格式化并返回 LString。
     template<class... Args>
-    static lstring std_format(std::format_string<Args...> fmtstr, Args&&... args) {
+    static LString std_format(std::format_string<Args...> fmtstr, Args&&... args) {
         return std::format(fmtstr, std::forward<Args>(args)...);
     }
 #endif // LSTRING_HAS_STD_FORMAT
@@ -2085,15 +2085,15 @@ public:
 #if LSTRING_HAS_MAGIC_ENUM
     /// 使用 magic_enum 将枚举值序列化为枚举项名称；未知值得到空字符串。
     template<class E>
-    static typename std::enable_if<std::is_enum<lstring_detail::remove_cvref_t<E>>::value, lstring>::type
+    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, LString>::type
     from_enum(E value) {
-        return lstring_detail::string_view(magic_enum::enum_name(value).data(),
+        return LStringDetail::string_view(magic_enum::enum_name(value).data(),
                                            magic_enum::enum_name(value).size());
     }
 
     /// from_enum() 的语义化别名。
     template<class E>
-    static typename std::enable_if<std::is_enum<lstring_detail::remove_cvref_t<E>>::value, lstring>::type
+    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, LString>::type
     enum_name(E value) {
         return from_enum(value);
     }
@@ -2101,11 +2101,11 @@ public:
     /// 使用 magic_enum 反序列化枚举名；失败时返回 std::nullopt。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        std::optional<lstring_detail::remove_cvref_t<E>>>::type
-    to_enum(lstring_detail::string_view text, bool case_sensitive = true) {
-        using D = lstring_detail::remove_cvref_t<E>;
-        auto trimmed_text = lstring(text).trimmed();
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        std::optional<LStringDetail::remove_cvref_t<E>>>::type
+    to_enum(LStringDetail::string_view text, bool case_sensitive = true) {
+        using D = LStringDetail::remove_cvref_t<E>;
+        auto trimmed_text = LString(text).trimmed();
         auto view = magic_enum::string_view(trimmed_text.data(), trimmed_text.size());
         if (case_sensitive) {
             return magic_enum::enum_cast<D>(view);
@@ -2116,27 +2116,27 @@ public:
     /// 使用 magic_enum 反序列化枚举名；nullptr 视为空字符串。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        std::optional<lstring_detail::remove_cvref_t<E>>>::type
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        std::optional<LStringDetail::remove_cvref_t<E>>>::type
     to_enum(const char* text, bool case_sensitive = true) {
-        return to_enum<E>(lstring_detail::as_view(text), case_sensitive);
+        return to_enum<E>(LStringDetail::as_view(text), case_sensitive);
     }
 
     /// 使用 magic_enum 反序列化当前字符串；失败时返回 std::nullopt。
     template<class E>
     typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        std::optional<lstring_detail::remove_cvref_t<E>>>::type
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        std::optional<LStringDetail::remove_cvref_t<E>>>::type
     to_enum(bool case_sensitive = true) const {
-        return lstring::to_enum<E>(view(), case_sensitive);
+        return LString::to_enum<E>(view(), case_sensitive);
     }
 
     /// 使用 magic_enum 反序列化枚举名；失败时返回 @p default_value。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        lstring_detail::remove_cvref_t<E>>::type
-    to_enum_or(lstring_detail::string_view text, lstring_detail::remove_cvref_t<E> default_value,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        LStringDetail::remove_cvref_t<E>>::type
+    to_enum_or(LStringDetail::string_view text, LStringDetail::remove_cvref_t<E> default_value,
                bool case_sensitive = true) {
         auto value = to_enum<E>(text, case_sensitive);
         return value ? *value : default_value;
@@ -2145,19 +2145,19 @@ public:
     /// 使用 magic_enum 反序列化枚举名；nullptr 视为空字符串，失败时返回 @p default_value。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        lstring_detail::remove_cvref_t<E>>::type
-    to_enum_or(const char* text, lstring_detail::remove_cvref_t<E> default_value,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        LStringDetail::remove_cvref_t<E>>::type
+    to_enum_or(const char* text, LStringDetail::remove_cvref_t<E> default_value,
                bool case_sensitive = true) {
-        return to_enum_or<E>(lstring_detail::as_view(text), default_value, case_sensitive);
+        return to_enum_or<E>(LStringDetail::as_view(text), default_value, case_sensitive);
     }
 
     /// 使用 magic_enum 反序列化当前字符串；失败时返回 @p default_value。
     template<class E>
     typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        lstring_detail::remove_cvref_t<E>>::type
-    to_enum_or(lstring_detail::remove_cvref_t<E> default_value,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        LStringDetail::remove_cvref_t<E>>::type
+    to_enum_or(LStringDetail::remove_cvref_t<E> default_value,
                bool case_sensitive = true) const {
         auto value = to_enum<E>(case_sensitive);
         return value ? *value : default_value;
@@ -2166,9 +2166,9 @@ public:
     /// 使用 magic_enum 反序列化枚举名；失败时抛出 std::runtime_error。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        lstring_detail::remove_cvref_t<E>>::type
-    to_enum_checked(lstring_detail::string_view text, bool case_sensitive = true) {
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        LStringDetail::remove_cvref_t<E>>::type
+    to_enum_checked(LStringDetail::string_view text, bool case_sensitive = true) {
         auto value = to_enum<E>(text, case_sensitive);
         if (!value) {
             throw std::runtime_error("invalid enum name: " + std::string(text));
@@ -2179,63 +2179,63 @@ public:
     /// 使用 magic_enum 反序列化枚举名；nullptr 视为空字符串，失败时抛出 std::runtime_error。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        lstring_detail::remove_cvref_t<E>>::type
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        LStringDetail::remove_cvref_t<E>>::type
     to_enum_checked(const char* text, bool case_sensitive = true) {
-        return to_enum_checked<E>(lstring_detail::as_view(text), case_sensitive);
+        return to_enum_checked<E>(LStringDetail::as_view(text), case_sensitive);
     }
 
     /// 使用 magic_enum 反序列化当前字符串；失败时抛出 std::runtime_error。
     template<class E>
     typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        lstring_detail::remove_cvref_t<E>>::type
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        LStringDetail::remove_cvref_t<E>>::type
     to_enum_checked(bool case_sensitive = true) const {
-        return lstring::to_enum_checked<E>(view(), case_sensitive);
+        return LString::to_enum_checked<E>(view(), case_sensitive);
     }
 
     /// 判断文本是否能反序列化为指定枚举。
     template<class E>
-    static typename std::enable_if<std::is_enum<lstring_detail::remove_cvref_t<E>>::value, bool>::type
-    is_enum_name(lstring_detail::string_view text, bool case_sensitive = true) {
+    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, bool>::type
+    is_enum_name(LStringDetail::string_view text, bool case_sensitive = true) {
         return to_enum<E>(text, case_sensitive).has_value();
     }
 
     /// 判断文本是否能反序列化为指定枚举；nullptr 视为空字符串。
     template<class E>
-    static typename std::enable_if<std::is_enum<lstring_detail::remove_cvref_t<E>>::value, bool>::type
+    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, bool>::type
     is_enum_name(const char* text, bool case_sensitive = true) {
-        return is_enum_name<E>(lstring_detail::as_view(text), case_sensitive);
+        return is_enum_name<E>(LStringDetail::as_view(text), case_sensitive);
     }
 
     /// 判断当前字符串是否能反序列化为指定枚举。
     template<class E>
-    typename std::enable_if<std::is_enum<lstring_detail::remove_cvref_t<E>>::value, bool>::type
+    typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, bool>::type
     is_enum_name(bool case_sensitive = true) const {
         return is_enum_name<E>(view(), case_sensitive);
     }
 
     /// 返回枚举类型名。
     template<class E>
-    static typename std::enable_if<std::is_enum<lstring_detail::remove_cvref_t<E>>::value, lstring>::type
+    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, LString>::type
     enum_type_name() {
-        using D = lstring_detail::remove_cvref_t<E>;
+        using D = LStringDetail::remove_cvref_t<E>;
         auto name = magic_enum::enum_type_name<D>();
-        return lstring_detail::string_view(name.data(), name.size());
+        return LStringDetail::string_view(name.data(), name.size());
     }
 
     /// 返回 magic_enum 可反射到的全部枚举名。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        std::vector<lstring>>::type
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        std::vector<LString>>::type
     enum_names() {
-        using D = lstring_detail::remove_cvref_t<E>;
-        std::vector<lstring> out;
+        using D = LStringDetail::remove_cvref_t<E>;
+        std::vector<LString> out;
         auto names = magic_enum::enum_names<D>();
         out.reserve(names.size());
         for (auto name : names) {
-            out.emplace_back(lstring_detail::string_view(name.data(), name.size()));
+            out.emplace_back(LStringDetail::string_view(name.data(), name.size()));
         }
         return out;
     }
@@ -2243,10 +2243,10 @@ public:
     /// 返回 magic_enum 可反射到的全部枚举值。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        std::vector<lstring_detail::remove_cvref_t<E>>>::type
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        std::vector<LStringDetail::remove_cvref_t<E>>>::type
     enum_values() {
-        using D = lstring_detail::remove_cvref_t<E>;
+        using D = LStringDetail::remove_cvref_t<E>;
         auto values = magic_enum::enum_values<D>();
         return std::vector<D>(values.begin(), values.end());
     }
@@ -2254,16 +2254,16 @@ public:
     /// 返回 magic_enum 可反射到的全部枚举值和名称。
     template<class E>
     static typename std::enable_if<
-        std::is_enum<lstring_detail::remove_cvref_t<E>>::value,
-        std::vector<std::pair<lstring_detail::remove_cvref_t<E>, lstring>>>::type
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
+        std::vector<std::pair<LStringDetail::remove_cvref_t<E>, LString>>>::type
     enum_entries() {
-        using D = lstring_detail::remove_cvref_t<E>;
-        std::vector<std::pair<D, lstring>> out;
+        using D = LStringDetail::remove_cvref_t<E>;
+        std::vector<std::pair<D, LString>> out;
         auto entries = magic_enum::enum_entries<D>();
         out.reserve(entries.size());
         for (auto entry : entries) {
             out.emplace_back(entry.first,
-                             lstring_detail::string_view(entry.second.data(), entry.second.size()));
+                             LStringDetail::string_view(entry.second.data(), entry.second.size()));
         }
         return out;
     }
@@ -2328,7 +2328,7 @@ public:
 
     /// 使用 fmt 默认格式化器格式化算术值。
     template<class T>
-    static typename std::enable_if<std::is_arithmetic<T>::value, lstring>::type from_number(T value) {
+    static typename std::enable_if<std::is_arithmetic<T>::value, LString>::type from_number(T value) {
         return fmt::format("{}", value);
     }
 
@@ -2339,24 +2339,24 @@ public:
      * 和中文传统编码只能启发式判断；如果调用方已知来源编码，应优先显式传入
      * LEncoding。
      */
-    static LEncoding detect_encoding(lstring_detail::string_view bytes) {
-        if (lstring_detail::has_prefix(bytes, lstring_detail::utf32be_bom())) {
+    static LEncoding detect_encoding(LStringDetail::string_view bytes) {
+        if (LStringDetail::has_prefix(bytes, LStringDetail::utf32be_bom())) {
             return LEncoding::Utf32Be;
         }
-        if (lstring_detail::has_prefix(bytes, lstring_detail::utf32le_bom())) {
+        if (LStringDetail::has_prefix(bytes, LStringDetail::utf32le_bom())) {
             return LEncoding::Utf32Le;
         }
-        if (lstring_detail::has_prefix(bytes, lstring_detail::utf8_bom())) {
+        if (LStringDetail::has_prefix(bytes, LStringDetail::utf8_bom())) {
             return LEncoding::Utf8Bom;
         }
-        if (lstring_detail::has_prefix(bytes, lstring_detail::utf16be_bom())) {
+        if (LStringDetail::has_prefix(bytes, LStringDetail::utf16be_bom())) {
             return LEncoding::Utf16Be;
         }
-        if (lstring_detail::has_prefix(bytes, lstring_detail::utf16le_bom())) {
+        if (LStringDetail::has_prefix(bytes, LStringDetail::utf16le_bom())) {
             return LEncoding::Utf16Le;
         }
 
-        if (lstring_detail::is_valid_utf8(bytes)) {
+        if (LStringDetail::is_valid_utf8(bytes)) {
             auto ascii = std::all_of(bytes.begin(), bytes.end(), [](char ch) {
                 return static_cast<unsigned char>(ch) <= 0x7F;
             });
@@ -2379,10 +2379,10 @@ public:
             }
         }
 
-        if (lstring_detail::can_decode_legacy(bytes, LEncoding::Gb2312)) {
+        if (LStringDetail::can_decode_legacy(bytes, LEncoding::Gb2312)) {
             return LEncoding::Gb2312;
         }
-        if (lstring_detail::can_decode_legacy(bytes, LEncoding::Gbk)) {
+        if (LStringDetail::can_decode_legacy(bytes, LEncoding::Gbk)) {
             return LEncoding::Gbk;
         }
 
@@ -2395,7 +2395,7 @@ public:
     }
 
     /// 返回编码枚举值稳定的小写显示名称。
-    static lstring_detail::string_view encoding_name(LEncoding encoding) noexcept {
+    static LStringDetail::string_view encoding_name(LEncoding encoding) noexcept {
         switch (encoding) {
         case LEncoding::Ascii:
             return "ascii";
@@ -2424,8 +2424,8 @@ public:
     }
 
     /// 检查字节序列是否为格式正确的 UTF-8。
-    static bool valid_utf8(lstring_detail::string_view text) {
-        return lstring_detail::is_valid_utf8(text);
+    static bool valid_utf8(LStringDetail::string_view text) {
+        return LStringDetail::is_valid_utf8(text);
     }
 
     /// 检查当前存储字节是否为格式正确的 UTF-8。
@@ -2434,7 +2434,7 @@ public:
     }
 
     /**
-     * @brief 将外部编码字节转换为 lstring 内部 UTF-8 形式。
+     * @brief 将外部编码字节转换为 LString 内部 UTF-8 形式。
      *
      * @param bytes 使用 @p encoding 编码的输入字节。
      * @param encoding 源编码；Unknown 会触发 detect_encoding()。
@@ -2442,15 +2442,15 @@ public:
      *        后端可恢复的位置会使用替换字符。
      *
      * GBK/GB2312 在 Windows 上使用 Win32 转换 API，在类 Unix 系统上使用
-     * iconv。返回的 lstring 始终存储 UTF-8 字节。
+     * iconv。返回的 LString 始终存储 UTF-8 字节。
      */
-    static lstring from_encoding(lstring_detail::string_view bytes, LEncoding encoding = LEncoding::Unknown,
+    static LString from_encoding(LStringDetail::string_view bytes, LEncoding encoding = LEncoding::Unknown,
                                  bool strict = true) {
         if (encoding == LEncoding::Unknown) {
             encoding = detect_encoding(bytes);
         }
 
-        auto input = lstring_detail::trim_bom(bytes, encoding);
+        auto input = LStringDetail::trim_bom(bytes, encoding);
         switch (encoding) {
         case LEncoding::Ascii: {
             for (char ch : input) {
@@ -2467,26 +2467,26 @@ public:
             if (strict && !valid_utf8(input)) {
                 throw std::runtime_error("invalid UTF-8 input");
             }
-            return lstring_detail::encode_utf8(lstring_detail::decode_utf8(input, strict));
+            return LStringDetail::encode_utf8(LStringDetail::decode_utf8(input, strict));
         case LEncoding::Utf16Le:
-            return lstring_detail::encode_utf8(lstring_detail::decode_utf16(input, true, strict));
+            return LStringDetail::encode_utf8(LStringDetail::decode_utf16(input, true, strict));
         case LEncoding::Utf16Be:
-            return lstring_detail::encode_utf8(lstring_detail::decode_utf16(input, false, strict));
+            return LStringDetail::encode_utf8(LStringDetail::decode_utf16(input, false, strict));
         case LEncoding::Utf32Le:
-            return lstring_detail::encode_utf8(lstring_detail::decode_utf32(input, true, strict));
+            return LStringDetail::encode_utf8(LStringDetail::decode_utf32(input, true, strict));
         case LEncoding::Utf32Be:
-            return lstring_detail::encode_utf8(lstring_detail::decode_utf32(input, false, strict));
+            return LStringDetail::encode_utf8(LStringDetail::decode_utf32(input, false, strict));
         case LEncoding::Latin1: {
             std::string out;
             out.reserve(input.size());
             for (auto ch : input) {
-                lstring_detail::append_utf8(out, static_cast<unsigned char>(ch));
+                LStringDetail::append_utf8(out, static_cast<unsigned char>(ch));
             }
             return out;
         }
         case LEncoding::Gbk:
         case LEncoding::Gb2312:
-            return lstring_detail::legacy_to_utf8(input, encoding, strict);
+            return LStringDetail::legacy_to_utf8(input, encoding, strict);
         case LEncoding::Unknown:
         default:
             return std::string(input);
@@ -2504,7 +2504,7 @@ public:
      * 返回的 std::string 是任意字节缓冲区，可能包含 NUL 字节。
      */
     std::string to_encoding(LEncoding encoding, bool write_bom = false, bool strict = true) const {
-        auto codepoints = lstring_detail::decode_utf8(data_, strict);
+        auto codepoints = LStringDetail::decode_utf8(data_, strict);
 
         switch (encoding) {
         case LEncoding::Ascii: {
@@ -2530,13 +2530,13 @@ public:
             return out;
         }
         case LEncoding::Utf16Le:
-            return lstring_detail::encode_utf16(codepoints, true, write_bom);
+            return LStringDetail::encode_utf16(codepoints, true, write_bom);
         case LEncoding::Utf16Be:
-            return lstring_detail::encode_utf16(codepoints, false, write_bom);
+            return LStringDetail::encode_utf16(codepoints, false, write_bom);
         case LEncoding::Utf32Le:
-            return lstring_detail::encode_utf32(codepoints, true, write_bom);
+            return LStringDetail::encode_utf32(codepoints, true, write_bom);
         case LEncoding::Utf32Be:
-            return lstring_detail::encode_utf32(codepoints, false, write_bom);
+            return LStringDetail::encode_utf32(codepoints, false, write_bom);
         case LEncoding::Latin1: {
             std::string out;
             out.reserve(codepoints.size());
@@ -2553,18 +2553,18 @@ public:
         }
         case LEncoding::Gbk:
         case LEncoding::Gb2312:
-            return lstring_detail::utf8_to_legacy(data_, encoding, strict);
+            return LStringDetail::utf8_to_legacy(data_, encoding, strict);
         }
         return data_;
     }
 
     /// 将 GBK 字节转换为内部 UTF-8 存储。
-    static lstring from_gbk(lstring_detail::string_view bytes, bool strict = true) {
+    static LString from_gbk(LStringDetail::string_view bytes, bool strict = true) {
         return from_encoding(bytes, LEncoding::Gbk, strict);
     }
 
     /// 将 GB2312 字节转换为内部 UTF-8 存储。
-    static lstring from_gb2312(lstring_detail::string_view bytes, bool strict = true) {
+    static LString from_gb2312(LStringDetail::string_view bytes, bool strict = true) {
         return from_encoding(bytes, LEncoding::Gb2312, strict);
     }
 
@@ -2584,44 +2584,44 @@ public:
      * 同时处理 16 位 wchar_t 平台（代理项对）和 32 位 wchar_t 平台
      *（直接 Unicode 标量值）。
      */
-    static lstring from_wstring(lstring_detail::wstring_view value, bool strict = true) {
+    static LString from_wstring(LStringDetail::wstring_view value, bool strict = true) {
         std::vector<char32_t> codepoints;
         codepoints.reserve(value.size());
 
         for (std::size_t i = 0; i < value.size(); ++i) {
             auto cp = static_cast<char32_t>(value[i]);
             if (sizeof(wchar_t) == 2) {
-                if (lstring_detail::is_high_surrogate(cp)) {
+                if (LStringDetail::is_high_surrogate(cp)) {
                     if (i + 1 >= value.size() ||
-                        !lstring_detail::is_low_surrogate(static_cast<char32_t>(value[i + 1]))) {
+                        !LStringDetail::is_low_surrogate(static_cast<char32_t>(value[i + 1]))) {
                         if (strict) {
                             throw std::runtime_error("invalid wide surrogate pair");
                         }
-                        codepoints.push_back(lstring_detail::replacement_char);
+                        codepoints.push_back(LStringDetail::replacement_char);
                         continue;
                     }
                     auto lo = static_cast<char32_t>(value[++i]);
                     codepoints.push_back(0x10000 + (((cp - 0xD800) << 10) | (lo - 0xDC00)));
-                } else if (lstring_detail::is_low_surrogate(cp)) {
+                } else if (LStringDetail::is_low_surrogate(cp)) {
                     if (strict) {
                         throw std::runtime_error("unpaired wide low surrogate");
                     }
-                    codepoints.push_back(lstring_detail::replacement_char);
+                    codepoints.push_back(LStringDetail::replacement_char);
                 } else {
                     codepoints.push_back(cp);
                 }
             } else {
-                if (!lstring_detail::is_valid_scalar(cp)) {
+                if (!LStringDetail::is_valid_scalar(cp)) {
                     if (strict) {
                         throw std::runtime_error("invalid wide code point");
                     }
-                    cp = lstring_detail::replacement_char;
+                    cp = LStringDetail::replacement_char;
                 }
                 codepoints.push_back(cp);
             }
         }
 
-        return lstring_detail::encode_utf8(codepoints);
+        return LStringDetail::encode_utf8(codepoints);
     }
 
     /**
@@ -2631,7 +2631,7 @@ public:
      * 在 32 位 wchar_t 目标上，每个标量值映射为一个 wchar_t。
      */
     std::wstring to_wstring(bool strict = true) const {
-        auto codepoints = lstring_detail::decode_utf8(data_, strict);
+        auto codepoints = LStringDetail::decode_utf8(data_, strict);
         std::wstring out;
         out.reserve(codepoints.size());
 
@@ -2658,28 +2658,28 @@ public:
         return std::filesystem::path(data_);
     }
 
-    /// 以 lstring 返回 path().filename()。
-    lstring filename() const {
+    /// 以 LString 返回 path().filename()。
+    LString filename() const {
         return path().filename().string();
     }
 
-    /// 以 lstring 返回 path().stem()。
-    lstring stem() const {
+    /// 以 LString 返回 path().stem()。
+    LString stem() const {
         return path().stem().string();
     }
 
-    /// 以 lstring 返回 path().extension()。
-    lstring extension() const {
+    /// 以 LString 返回 path().extension()。
+    LString extension() const {
         return path().extension().string();
     }
 
-    /// 以 lstring 返回 path().parent_path()。
-    lstring parent_path() const {
+    /// 以 LString 返回 path().parent_path()。
+    LString parent_path() const {
         return path().parent_path().string();
     }
 
-    /// 以 lstring 返回 path().lexically_normal()；不访问真实文件系统。
-    lstring normalized_path() const {
+    /// 以 LString 返回 path().lexically_normal()；不访问真实文件系统。
+    LString normalized_path() const {
         return path().lexically_normal().string();
     }
 
@@ -2695,12 +2695,12 @@ public:
     }
 
     /// 按文件系统路径规则追加另一个路径组件。
-    lstring join_path(const std::filesystem::path& rhs) const {
+    LString join_path(const std::filesystem::path& rhs) const {
         return (path() / rhs).string();
     }
 
     /// 路径拼接运算符，等价于 join_path()。
-    friend lstring operator/(const lstring& lhs, const std::filesystem::path& rhs) {
+    friend LString operator/(const LString& lhs, const std::filesystem::path& rhs) {
         return lhs.join_path(rhs);
     }
 #endif // LSTRING_HAS_FILESYSTEM
@@ -2711,7 +2711,7 @@ public:
      * 编译期可用 <re2/re2.h> 时使用 RE2，否则使用 std::regex。因此 pattern
      * 语法跟随当前启用的后端。
      */
-    bool regex_contains(lstring_detail::string_view pattern) const {
+    bool regex_contains(LStringDetail::string_view pattern) const {
 #if LSTRING_HAS_RE2
         return RE2::PartialMatch(data_, RE2(std::string(pattern)));
 #else
@@ -2725,14 +2725,14 @@ public:
      *
      * 没有匹配时返回 std::nullopt。返回的字符串是完整匹配文本，不是某个捕获组。
      */
-    std::optional<lstring> regex_find(lstring_detail::string_view pattern) const {
+    std::optional<LString> regex_find(LStringDetail::string_view pattern) const {
 #if LSTRING_HAS_RE2
         auto wrapped = fmt::format("({})", std::string(pattern));
         RE2 re(wrapped);
         re2::StringPiece input(data_);
         re2::StringPiece match;
         if (RE2::FindAndConsume(&input, re, &match)) {
-            return lstring(lstring_detail::string_view(match.data(), match.size()));
+            return LString(LStringDetail::string_view(match.data(), match.size()));
         }
         return std::nullopt;
 #else
@@ -2746,15 +2746,15 @@ public:
 #endif // LSTRING_HAS_STD_OPTIONAL
 
     /// 按从左到右顺序返回所有非重叠正则匹配。
-    std::vector<lstring> regex_find_all(lstring_detail::string_view pattern) const {
-        std::vector<lstring> out;
+    std::vector<LString> regex_find_all(LStringDetail::string_view pattern) const {
+        std::vector<LString> out;
 #if LSTRING_HAS_RE2
         auto wrapped = fmt::format("({})", std::string(pattern));
         RE2 re(wrapped);
         re2::StringPiece input(data_);
         re2::StringPiece match;
         while (RE2::FindAndConsume(&input, re, &match)) {
-            out.emplace_back(lstring_detail::string_view(match.data(), match.size()));
+            out.emplace_back(LStringDetail::string_view(match.data(), match.size()));
         }
 #else
         std::regex re {std::string(pattern)};
@@ -2773,9 +2773,9 @@ public:
      * @param rewrite 当前正则后端使用的替换表达式/字符串。
      * @param replace_all 为 true 时替换全部匹配，为 false 时只替换第一个。
      */
-    lstring regex_replaced(lstring_detail::string_view pattern, lstring_detail::string_view rewrite,
+    LString regex_replaced(LStringDetail::string_view pattern, LStringDetail::string_view rewrite,
                            bool replace_all = true) const {
-        lstring out(*this);
+        LString out(*this);
         out.regex_replace(pattern, rewrite, replace_all);
         return out;
     }
@@ -2785,7 +2785,7 @@ public:
      *
      * 编译进 RE2 时使用 RE2 替换语义；否则使用 std::regex_replace 语义。
      */
-    lstring& regex_replace(lstring_detail::string_view pattern, lstring_detail::string_view rewrite,
+    LString& regex_replace(LStringDetail::string_view pattern, LStringDetail::string_view rewrite,
                            bool replace_all = true) {
 #if LSTRING_HAS_RE2
         RE2 re(std::string(pattern));
@@ -2805,54 +2805,54 @@ public:
     }
 
     /// 将当前存储字节编码为标准 Base64 文本。
-    lstring base64_encoded() const {
-        return lstring_detail::base64_encode(view());
+    LString base64_encoded() const {
+        return LStringDetail::base64_encode(view());
     }
 
     /// 将当前内容按 Base64 文本解码为原始字节。
-    lstring base64_decoded(bool strict = true) const {
-        return lstring_detail::base64_decode(view(), strict);
+    LString base64_decoded(bool strict = true) const {
+        return LStringDetail::base64_decode(view(), strict);
     }
 
     /// 将任意字节编码为标准 Base64 文本。
-    static lstring base64_encode(lstring_detail::string_view bytes) {
-        return lstring_detail::base64_encode(bytes);
+    static LString base64_encode(LStringDetail::string_view bytes) {
+        return LStringDetail::base64_encode(bytes);
     }
 
     /// 将 Base64 文本解码为原始字节。
-    static lstring base64_decode(lstring_detail::string_view encoded, bool strict = true) {
-        return lstring_detail::base64_decode(encoded, strict);
+    static LString base64_decode(LStringDetail::string_view encoded, bool strict = true) {
+        return LStringDetail::base64_decode(encoded, strict);
     }
 
-    /// 将 Base64 文本解码为 lstring；语义同 base64_decode()，名称更适合构造场景。
-    static lstring from_base64(lstring_detail::string_view encoded, bool strict = true) {
+    /// 将 Base64 文本解码为 LString；语义同 base64_decode()，名称更适合构造场景。
+    static LString from_base64(LStringDetail::string_view encoded, bool strict = true) {
         return base64_decode(encoded, strict);
     }
 
     /// 返回当前存储字节的 MD5 摘要，格式为 32 位小写十六进制文本。
-    lstring md5() const {
-        return lstring_detail::md5_hex(view());
+    LString md5() const {
+        return LStringDetail::md5_hex(view());
     }
 
     /// 返回当前存储字节的 16 字节 MD5 二进制摘要。
     std::array<unsigned char, 16> md5_digest() const {
-        return lstring_detail::md5_digest(view());
+        return LStringDetail::md5_digest(view());
     }
 
     /// 计算任意字节的 MD5 摘要，格式为 32 位小写十六进制文本。
-    static lstring md5(lstring_detail::string_view bytes) {
-        return lstring_detail::md5_hex(bytes);
+    static LString md5(LStringDetail::string_view bytes) {
+        return LStringDetail::md5_hex(bytes);
     }
 
     /// 计算任意字节的 16 字节 MD5 二进制摘要。
-    static std::array<unsigned char, 16> md5_digest(lstring_detail::string_view bytes) {
-        return lstring_detail::md5_digest(bytes);
+    static std::array<unsigned char, 16> md5_digest(LStringDetail::string_view bytes) {
+        return LStringDetail::md5_digest(bytes);
     }
 
     /// 使用当前标准下可用的标准哈希器对存储字节求哈希。
     std::size_t hash() const noexcept {
 #if __cplusplus >= 201703L
-        return std::hash<lstring_detail::string_view> {}(view());
+        return std::hash<LStringDetail::string_view> {}(view());
 #else
         return std::hash<std::string> {}(data_);
 #endif // __cplusplus >= 201703L
@@ -2860,42 +2860,41 @@ public:
 };
 
 /// PascalCase 别名，供偏好类型命名风格的代码使用。
-using LString = lstring;
 
-/// 用户自定义字面量，用于从字符串字面量简洁构造 lstring。
-inline lstring operator""_ls(const char* text, std::size_t size) {
-    return lstring(lstring_detail::string_view(text, size));
+/// 用户自定义字面量，用于从字符串字面量简洁构造 LString。
+inline LString operator""_ls(const char* text, std::size_t size) {
+    return LString(LStringDetail::string_view(text, size));
 }
 
-/// fmt 格式化器：lstring 按 lstring_detail::string_view 的规则输出。
+/// fmt 格式化器：LString 按 LStringDetail::string_view 的规则输出。
 template<>
-struct fmt::formatter<lstring> : fmt::formatter<fmt::string_view> {
+struct fmt::formatter<LString> : fmt::formatter<fmt::string_view> {
     /// 将存储字节写入 fmt 输出上下文。
     template<class FormatContext>
-    typename FormatContext::iterator format(const lstring& value, FormatContext& ctx) const {
+    typename FormatContext::iterator format(const LString& value, FormatContext& ctx) const {
         return fmt::formatter<fmt::string_view>::format(
             fmt::string_view(value.data(), value.size()), ctx);
     }
 };
 
 #if LSTRING_HAS_STD_FORMAT
-/// std::format 格式化器：lstring 按 lstring_detail::string_view 的规则输出。
+/// std::format 格式化器：LString 按 LStringDetail::string_view 的规则输出。
 template<>
-struct std::formatter<lstring, char> : std::formatter<std::string_view, char> {
-    /// 将 lstring 的字节视图写入 std::format 输出上下文。
+struct std::formatter<LString, char> : std::formatter<std::string_view, char> {
+    /// 将 LString 的字节视图写入 std::format 输出上下文。
     template<class FormatContext>
-    auto format(const lstring& value, FormatContext& ctx) const {
+    auto format(const LString& value, FormatContext& ctx) const {
         return std::formatter<std::string_view, char>::format(
             std::string_view(value.data(), value.size()), ctx);
     }
 };
 #endif // LSTRING_HAS_STD_FORMAT
 
-/// std::hash 特化，使 lstring 可用于无序容器。
+/// std::hash 特化，使 LString 可用于无序容器。
 template<>
-struct std::hash<lstring> {
-    /// 按 lstring 的字节视图求哈希。
-    std::size_t operator()(const lstring& value) const noexcept {
+struct std::hash<LString> {
+    /// 按 LString 的字节视图求哈希。
+    std::size_t operator()(const LString& value) const noexcept {
         return value.hash();
     }
 };

@@ -1,12 +1,12 @@
 /**
- * @file lfmt.hpp
+ * @file LFmt.hpp
  * @brief ltool 内部统一的 fmt 引入入口。
  */
 
 #ifndef LTOOL_LFMT_INCLUDE
 #define LTOOL_LFMT_INCLUDE
 
-#include "lconfig.hpp"
+#include "LConfig.hpp"
 
 #if LTOOL_USE_EXTERNAL_FMT
 #include <fmt/format.h>

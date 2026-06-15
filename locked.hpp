@@ -7,7 +7,7 @@
 #include <functional>
 #include <concepts>
 
-namespace locked_detail {
+namespace LockedDetail {
 
 template<class M>
 concept SharedLockable = requires(M& m) {
@@ -22,7 +22,7 @@ using ReadLock =
 template<class M>
 using WriteLock = std::unique_lock<M>;
 
-} // namespace locked_detail
+} // namespace LockedDetail
 
 template<class T, class Mutex = std::shared_mutex>
 class Locked {
@@ -87,26 +87,26 @@ private:
     };
 
 public:
-    using WriteGuard = Guard<false, locked_detail::WriteLock<Mutex>>;
-    using ReadGuard  = Guard<true,  locked_detail::ReadLock<Mutex>>;
+    using WriteGuard = Guard<false, LockedDetail::WriteLock<Mutex>>;
+    using ReadGuard  = Guard<true,  LockedDetail::ReadLock<Mutex>>;
 
     WriteGuard wlock() {
-        return WriteGuard(&data_, locked_detail::WriteLock<Mutex>(mutex_));
+        return WriteGuard(&data_, LockedDetail::WriteLock<Mutex>(mutex_));
     }
 
     ReadGuard rlock() const {
-        return ReadGuard(&data_, locked_detail::ReadLock<Mutex>(mutex_));
+        return ReadGuard(&data_, LockedDetail::ReadLock<Mutex>(mutex_));
     }
 
     template<class F>
     decltype(auto) with_write(F&& f) {
-        auto lock = locked_detail::WriteLock<Mutex>(mutex_);
+        auto lock = LockedDetail::WriteLock<Mutex>(mutex_);
         return std::invoke(std::forward<F>(f), data_);
     }
 
     template<class F>
     decltype(auto) with_read(F&& f) const {
-        auto lock = locked_detail::ReadLock<Mutex>(mutex_);
+        auto lock = LockedDetail::ReadLock<Mutex>(mutex_);
         return std::invoke(std::forward<F>(f), std::as_const(data_));
     }
 

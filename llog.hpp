@@ -1,15 +1,15 @@
 /**
- * @file llog.hpp
+ * @file LLog.hpp
  * @brief ltool 的轻量级纯头文件日志工具。
  */
 
 #ifndef LTOOL_LLOG_INCLUDE
 #define LTOOL_LLOG_INCLUDE
 
-#include "lconfig.hpp"
+#include "LConfig.hpp"
 
 #if !LTOOL_HAS_CPP11
-#error "llog requires C++11 or later"
+#error "LLog requires C++11 or later"
 #endif
 
 #include <chrono>
@@ -36,7 +36,7 @@
 #include <source_location>
 #endif
 
-#include "lfmt.hpp"
+#include "LFmt.hpp"
 
 #define LTOOL_LOG_LEVEL_TRACE 0
 #define LTOOL_LOG_LEVEL_DEBUG 1
@@ -50,9 +50,9 @@
 #define LTOOL_ACTIVE_LOG_LEVEL LTOOL_LOG_LEVEL_TRACE
 #endif
 
-namespace llog {
+namespace LLog {
 
-enum class level {
+enum class Level {
     trace = LTOOL_LOG_LEVEL_TRACE,
     debug = LTOOL_LOG_LEVEL_DEBUG,
     info = LTOOL_LOG_LEVEL_INFO,
@@ -62,17 +62,17 @@ enum class level {
     off = LTOOL_LOG_LEVEL_OFF
 };
 
-enum class color_mode {
+enum class ColorMode {
     automatic,
     always,
     never
 };
 
 #if LTOOL_HAS_SOURCE_LOCATION
-using source_location = std::source_location;
-#define LTOOL_CURRENT_SOURCE_LOCATION ::llog::source_location::current()
+using SourceLocation = std::source_location;
+#define LTOOL_CURRENT_SOURCE_LOCATION ::LLog::SourceLocation::current()
 #else
-class source_location {
+class SourceLocation {
 private:
     const char* file_name_ = "";
     const char* function_name_ = "";
@@ -80,9 +80,9 @@ private:
     std::uint_least32_t column_ = 0;
 
 public:
-    constexpr source_location() noexcept = default;
+    constexpr SourceLocation() noexcept = default;
 
-    constexpr source_location(const char* file_name, std::uint_least32_t line,
+    constexpr SourceLocation(const char* file_name, std::uint_least32_t line,
                               const char* function_name = "",
                               std::uint_least32_t column = 0) noexcept
         : file_name_(file_name),
@@ -90,7 +90,7 @@ public:
           line_(line),
           column_(column) {}
 
-    static constexpr source_location current() noexcept {
+    static constexpr SourceLocation current() noexcept {
         return {};
     }
 
@@ -110,54 +110,54 @@ public:
         return column_;
     }
 };
-#define LTOOL_CURRENT_SOURCE_LOCATION ::llog::source_location(__FILE__, __LINE__, __func__)
+#define LTOOL_CURRENT_SOURCE_LOCATION ::LLog::SourceLocation(__FILE__, __LINE__, __func__)
 #endif
 
-struct record {
-    level severity = level::info;
+struct Record {
+    Level severity = Level::info;
     std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
     std::thread::id thread_id {};
     std::string message;
-    source_location location = source_location::current();
+    SourceLocation location = SourceLocation::current();
 };
 
-using sink_type = std::function<void(const record&)>;
+using SinkType = std::function<void(const Record&)>;
 
-inline const char* level_name(level severity) noexcept {
+inline const char* level_name(Level severity) noexcept {
     switch (severity) {
-    case level::trace:
+    case Level::trace:
         return "TRACE";
-    case level::debug:
+    case Level::debug:
         return "DEBUG";
-    case level::info:
+    case Level::info:
         return "INFO";
-    case level::warn:
+    case Level::warn:
         return "WARN";
-    case level::error:
+    case Level::error:
         return "ERROR";
-    case level::fatal:
+    case Level::fatal:
         return "FATAL";
-    case level::off:
+    case Level::off:
     default:
         return "OFF";
     }
 }
 
-inline const char* level_color(level severity) noexcept {
+inline const char* level_color(Level severity) noexcept {
     switch (severity) {
-    case level::trace:
+    case Level::trace:
         return "\x1b[90m";
-    case level::debug:
+    case Level::debug:
         return "\x1b[36m";
-    case level::info:
+    case Level::info:
         return "\x1b[32m";
-    case level::warn:
+    case Level::warn:
         return "\x1b[33m";
-    case level::error:
+    case Level::error:
         return "\x1b[31m";
-    case level::fatal:
+    case Level::fatal:
         return "\x1b[1;37;41m";
-    case level::off:
+    case Level::off:
     default:
         return "";
     }
@@ -181,11 +181,11 @@ inline bool is_terminal(std::FILE* file) {
 #endif
 }
 
-inline bool should_use_color(color_mode mode, std::FILE* file) {
-    if (mode == color_mode::always) {
+inline bool should_use_color(ColorMode mode, std::FILE* file) {
+    if (mode == ColorMode::always) {
         return true;
     }
-    if (mode == color_mode::never || env_is_set("NO_COLOR") || env_is_zero("CLICOLOR")) {
+    if (mode == ColorMode::never || env_is_set("NO_COLOR") || env_is_zero("CLICOLOR")) {
         return false;
     }
     if (env_is_set("CLICOLOR_FORCE")) {
@@ -194,9 +194,9 @@ inline bool should_use_color(color_mode mode, std::FILE* file) {
     return is_terminal(file);
 }
 
-inline bool is_enabled(level runtime_level, level severity) noexcept {
+inline bool is_enabled(Level runtime_level, Level severity) noexcept {
     return static_cast<int>(severity) >= static_cast<int>(runtime_level) &&
-           severity != level::off && runtime_level != level::off;
+           severity != Level::off && runtime_level != Level::off;
 }
 
 inline std::tm local_time(std::time_t value) {
@@ -209,7 +209,7 @@ inline std::tm local_time(std::time_t value) {
     return out;
 }
 
-inline std::string format_record(const record& item, bool with_location, bool with_color = false) {
+inline std::string format_record(const Record& item, bool with_location, bool with_color = false) {
     auto tt = std::chrono::system_clock::to_time_t(item.time);
     auto tm = local_time(tt);
 
@@ -255,16 +255,16 @@ inline std::string format_record(const record& item, bool with_location, bool wi
     return out.str();
 }
 
-class logger {
+class Logger {
 private:
     mutable std::mutex mutex_;
-    level min_level_ = level::info;
+    Level min_level_ = Level::info;
     bool with_location_ = false;
-    color_mode color_mode_ = color_mode::automatic;
-    sink_type sink_;
+    ColorMode color_mode_ = ColorMode::automatic;
+    SinkType sink_;
 
-    static void default_sink(const record& item, bool with_location, color_mode colors) {
-        bool to_error = static_cast<int>(item.severity) >= static_cast<int>(level::warn);
+    static void default_sink(const Record& item, bool with_location, ColorMode colors) {
+        bool to_error = static_cast<int>(item.severity) >= static_cast<int>(Level::warn);
         std::FILE* file = to_error ? stderr : stdout;
         auto text = format_record(item, with_location, should_use_color(colors, file));
         auto& stream = to_error ? std::cerr : std::cout;
@@ -272,14 +272,14 @@ private:
     }
 
 public:
-    logger() = default;
+    Logger() = default;
 
-    void set_level(level value) {
+    void set_level(Level value) {
         std::lock_guard<std::mutex> lock(mutex_);
         min_level_ = value;
     }
 
-    level min_level() const {
+    Level min_level() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return min_level_;
     }
@@ -294,21 +294,21 @@ public:
         return with_location_;
     }
 
-    void set_color_mode(color_mode value) {
+    void set_color_mode(ColorMode value) {
         std::lock_guard<std::mutex> lock(mutex_);
         color_mode_ = value;
     }
 
     void set_color_enabled(bool value) {
-        set_color_mode(value ? color_mode::always : color_mode::never);
+        set_color_mode(value ? ColorMode::always : ColorMode::never);
     }
 
-    color_mode colors() const {
+    ColorMode colors() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return color_mode_;
     }
 
-    void set_sink(sink_type sink) {
+    void set_sink(SinkType sink) {
         std::lock_guard<std::mutex> lock(mutex_);
         sink_ = std::move(sink);
     }
@@ -318,16 +318,16 @@ public:
         sink_ = nullptr;
     }
 
-    bool enabled(level severity) const {
+    bool enabled(Level severity) const {
         std::lock_guard<std::mutex> lock(mutex_);
         return is_enabled(min_level_, severity);
     }
 
-    void write(level severity, const std::string& message,
-               source_location location = source_location::current()) {
-        sink_type sink;
+    void write(Level severity, const std::string& message,
+               SourceLocation location = SourceLocation::current()) {
+        SinkType sink;
         bool with_location = false;
-        color_mode colors = color_mode::automatic;
+        ColorMode colors = ColorMode::automatic;
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -339,7 +339,7 @@ public:
             colors = color_mode_;
         }
 
-        record item;
+        Record item;
         item.severity = severity;
         item.time = std::chrono::system_clock::now();
         item.thread_id = std::this_thread::get_id();
@@ -354,13 +354,13 @@ public:
         }
     }
 
-    void write(level severity, const char* message,
-               source_location location = source_location::current()) {
+    void write(Level severity, const char* message,
+               SourceLocation location = SourceLocation::current()) {
         write(severity, std::string(message ? message : ""), location);
     }
 
     template<class... Args>
-    void writef(level severity, source_location location, fmt::format_string<Args...> fmt_text,
+    void writef(Level severity, SourceLocation location, fmt::format_string<Args...> fmt_text,
                 Args&&... args) {
         if (!enabled(severity)) {
             return;
@@ -369,12 +369,12 @@ public:
     }
 };
 
-inline logger& default_logger() {
-    static logger instance;
+inline Logger& default_logger() {
+    static Logger instance;
     return instance;
 }
 
-inline void set_level(level value) {
+inline void set_level(Level value) {
     default_logger().set_level(value);
 }
 
@@ -382,7 +382,7 @@ inline void set_location_visible(bool value) {
     default_logger().set_location_visible(value);
 }
 
-inline void set_color_mode(color_mode value) {
+inline void set_color_mode(ColorMode value) {
     default_logger().set_color_mode(value);
 }
 
@@ -390,7 +390,7 @@ inline void set_color_enabled(bool value) {
     default_logger().set_color_enabled(value);
 }
 
-inline void set_sink(sink_type sink) {
+inline void set_sink(SinkType sink) {
     default_logger().set_sink(std::move(sink));
 }
 
@@ -398,114 +398,114 @@ inline void reset_sink() {
     default_logger().reset_sink();
 }
 
-inline bool enabled(level severity) {
+inline bool enabled(Level severity) {
     return default_logger().enabled(severity);
 }
 
-inline void write(level severity, const std::string& message,
-                  source_location location = source_location::current()) {
+inline void write(Level severity, const std::string& message,
+                  SourceLocation location = SourceLocation::current()) {
     default_logger().write(severity, message, location);
 }
 
-inline void write(level severity, const char* message,
-                  source_location location = source_location::current()) {
+inline void write(Level severity, const char* message,
+                  SourceLocation location = SourceLocation::current()) {
     default_logger().write(severity, message, location);
 }
 
 template<class... Args>
-inline void writef(level severity, source_location location, fmt::format_string<Args...> fmt_text,
+inline void writef(Level severity, SourceLocation location, fmt::format_string<Args...> fmt_text,
                    Args&&... args) {
     default_logger().writef(severity, location, fmt_text, std::forward<Args>(args)...);
 }
 
-inline void trace(const std::string& message, source_location location = source_location::current()) {
-    write(level::trace, message, location);
+inline void trace(const std::string& message, SourceLocation location = SourceLocation::current()) {
+    write(Level::trace, message, location);
 }
 
-inline void trace(const char* message, source_location location = source_location::current()) {
-    write(level::trace, message, location);
+inline void trace(const char* message, SourceLocation location = SourceLocation::current()) {
+    write(Level::trace, message, location);
 }
 
-inline void debug(const std::string& message, source_location location = source_location::current()) {
-    write(level::debug, message, location);
+inline void debug(const std::string& message, SourceLocation location = SourceLocation::current()) {
+    write(Level::debug, message, location);
 }
 
-inline void debug(const char* message, source_location location = source_location::current()) {
-    write(level::debug, message, location);
+inline void debug(const char* message, SourceLocation location = SourceLocation::current()) {
+    write(Level::debug, message, location);
 }
 
-inline void info(const std::string& message, source_location location = source_location::current()) {
-    write(level::info, message, location);
+inline void info(const std::string& message, SourceLocation location = SourceLocation::current()) {
+    write(Level::info, message, location);
 }
 
-inline void info(const char* message, source_location location = source_location::current()) {
-    write(level::info, message, location);
+inline void info(const char* message, SourceLocation location = SourceLocation::current()) {
+    write(Level::info, message, location);
 }
 
-inline void warn(const std::string& message, source_location location = source_location::current()) {
-    write(level::warn, message, location);
+inline void warn(const std::string& message, SourceLocation location = SourceLocation::current()) {
+    write(Level::warn, message, location);
 }
 
-inline void warn(const char* message, source_location location = source_location::current()) {
-    write(level::warn, message, location);
+inline void warn(const char* message, SourceLocation location = SourceLocation::current()) {
+    write(Level::warn, message, location);
 }
 
-inline void error(const std::string& message, source_location location = source_location::current()) {
-    write(level::error, message, location);
+inline void error(const std::string& message, SourceLocation location = SourceLocation::current()) {
+    write(Level::error, message, location);
 }
 
-inline void error(const char* message, source_location location = source_location::current()) {
-    write(level::error, message, location);
+inline void error(const char* message, SourceLocation location = SourceLocation::current()) {
+    write(Level::error, message, location);
 }
 
-inline void fatal(const std::string& message, source_location location = source_location::current()) {
-    write(level::fatal, message, location);
+inline void fatal(const std::string& message, SourceLocation location = SourceLocation::current()) {
+    write(Level::fatal, message, location);
 }
 
-inline void fatal(const char* message, source_location location = source_location::current()) {
-    write(level::fatal, message, location);
+inline void fatal(const char* message, SourceLocation location = SourceLocation::current()) {
+    write(Level::fatal, message, location);
 }
 
-} // namespace llog
+} // namespace LLog
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_TRACE
 #define LLOG_TRACE(...) \
-    ::llog::writef(::llog::level::trace, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::writef(::LLog::Level::trace, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_TRACE(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_DEBUG
 #define LLOG_DEBUG(...) \
-    ::llog::writef(::llog::level::debug, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::writef(::LLog::Level::debug, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_DEBUG(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_INFO
 #define LLOG_INFO(...) \
-    ::llog::writef(::llog::level::info, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::writef(::LLog::Level::info, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_INFO(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_WARN
 #define LLOG_WARN(...) \
-    ::llog::writef(::llog::level::warn, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::writef(::LLog::Level::warn, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_WARN(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_ERROR
 #define LLOG_ERROR(...) \
-    ::llog::writef(::llog::level::error, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::writef(::LLog::Level::error, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_ERROR(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_FATAL
 #define LLOG_FATAL(...) \
-    ::llog::writef(::llog::level::fatal, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::writef(::LLog::Level::fatal, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_FATAL(...) ((void)0)
 #endif

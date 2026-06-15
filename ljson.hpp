@@ -1,12 +1,12 @@
 /**
- * @file ljson.hpp
+ * @file LJson.hpp
  * @brief ltool 的 JSON 统一入口，按可用头文件接入多个 JSON 后端。
  */
 
 #ifndef LTOOL_LJSON_INCLUDE
 #define LTOOL_LJSON_INCLUDE
 
-#include "lconfig.hpp"
+#include "LConfig.hpp"
 
 #include <cstddef>
 #include <cstdlib>
@@ -59,9 +59,9 @@
 #endif
 #endif
 
-namespace ljson {
+namespace LJson {
 
-enum class backend {
+enum class Backend {
     none,
     text,
     nlohmann_json,
@@ -107,10 +107,10 @@ struct is_json_text_source
                                  !std::is_same<remove_cvref_t<T>, std::string>::value> {};
 
 #if LJSON_HAS_JSONCPP
-inline std::string jsoncpp_to_string(const Json::Value& value) {
-    Json::StreamWriterBuilder builder;
+inline std::string jsoncpp_to_string(const ::Json::Value& value) {
+    ::Json::StreamWriterBuilder builder;
     builder["indentation"] = "";
-    return Json::writeString(builder, value);
+    return ::Json::writeString(builder, value);
 }
 #endif
 
@@ -151,31 +151,31 @@ inline std::string yyjson_to_string(yyjson_mut_val* value,
 
 } // namespace detail
 
-class json_view {
+class JsonView {
 private:
     const char* data_ = "";
     std::size_t size_ = 0;
 
 public:
-    json_view() = default;
+    JsonView() = default;
 
-    json_view(const char* text)
+    JsonView(const char* text)
         : data_(text ? text : ""), size_(text ? std::strlen(text) : 0) {}
 
-    json_view(const char* text, std::size_t size)
+    JsonView(const char* text, std::size_t size)
         : data_(text ? text : ""), size_(text ? size : 0) {
         if (!text && size != 0) {
-            throw std::invalid_argument("ljson::json_view cannot reference null data");
+            throw std::invalid_argument("LJson::JsonView cannot reference null data");
         }
     }
 
-    json_view(const std::string& text)
+    JsonView(const std::string& text)
         : data_(text.data()), size_(text.size()) {}
 
     template<class Text,
              typename std::enable_if<detail::is_json_text_source<Text>::value,
                                      int>::type = 0>
-    json_view(const Text& text)
+    JsonView(const Text& text)
         : data_(text.data()), size_(text.size()) {}
 
     const char* data() const noexcept {
@@ -195,64 +195,64 @@ public:
     }
 };
 
-class json {
+class Json {
 private:
     std::string text_;
 
 public:
-    json() = default;
+    Json() = default;
 
-    json(const char* text)
+    Json(const char* text)
         : text_(text ? text : "") {}
 
-    json(const char* text, std::size_t size)
+    Json(const char* text, std::size_t size)
         : text_(text ? std::string(text, size) : std::string()) {
         if (!text && size != 0) {
-            throw std::invalid_argument("ljson::json cannot copy null data");
+            throw std::invalid_argument("LJson::Json cannot copy null data");
         }
     }
 
-    json(json_view text)
+    Json(JsonView text)
         : text_(text.data(), text.size()) {}
 
-    json(std::string text)
+    Json(std::string text)
         : text_(std::move(text)) {}
 
     template<class Text,
              typename std::enable_if<detail::is_json_text_source<Text>::value,
                                      int>::type = 0>
-    json(const Text& text)
+    Json(const Text& text)
         : text_(text.data(), text.size()) {}
 
 #if LJSON_HAS_NLOHMANN_JSON
-    json(const nlohmann::json& value)
+    Json(const nlohmann::json& value)
         : text_(value.dump()) {}
 #endif
 
 #if LJSON_HAS_JSONCPP
-    json(const Json::Value& value)
+    Json(const ::Json::Value& value)
         : text_(detail::jsoncpp_to_string(value)) {}
 #endif
 
 #if LJSON_HAS_SIMDJSON
-    json(simdjson::dom::element value)
+    Json(simdjson::dom::element value)
         : text_(simdjson::to_string(value)) {}
 
-    json(simdjson::dom::document& value)
+    Json(simdjson::dom::document& value)
         : text_(simdjson::to_string(value.root())) {}
 #endif
 
 #if LJSON_HAS_YYJSON
-    json(yyjson_doc* doc)
+    Json(yyjson_doc* doc)
         : text_(detail::yyjson_to_string(doc)) {}
 
-    json(yyjson_val* value)
+    Json(yyjson_val* value)
         : text_(detail::yyjson_to_string(value)) {}
 
-    json(yyjson_mut_doc* doc)
+    Json(yyjson_mut_doc* doc)
         : text_(detail::yyjson_to_string(doc)) {}
 
-    json(yyjson_mut_val* value)
+    Json(yyjson_mut_val* value)
         : text_(detail::yyjson_to_string(value)) {}
 #endif
 
@@ -276,11 +276,11 @@ public:
         return text_.empty();
     }
 
-    json_view view() const noexcept {
-        return json_view(text_.data(), text_.size());
+    JsonView view() const noexcept {
+        return JsonView(text_.data(), text_.size());
     }
 
-    operator json_view() const noexcept {
+    operator JsonView() const noexcept {
         return view();
     }
 
@@ -290,8 +290,8 @@ public:
 
 #if LJSON_HAS_RFL_JSON
     template<class T>
-    static json from(const T& value) {
-        return json(rfl::json::write(value));
+    static Json from(const T& value) {
+        return Json(rfl::json::write(value));
     }
 
     template<class T>
@@ -310,23 +310,23 @@ public:
     }
 #else
     template<class T>
-    static json from(const T&) {
+    static Json from(const T&) {
         static_assert(detail::dependent_false<T>::value,
-                      "ljson::json::from<T> requires C++20 and reflect-cpp rfl/json");
-        return json();
+                      "LJson::Json::from<T> requires C++20 and reflect-cpp rfl/json");
+        return Json();
     }
 
     template<class T>
     T read() const {
         static_assert(detail::dependent_false<T>::value,
-                      "ljson::json::read<T> requires C++20 and reflect-cpp rfl/json");
+                      "LJson::Json::read<T> requires C++20 and reflect-cpp rfl/json");
         return T();
     }
 
     template<class T>
     T to() const {
         static_assert(detail::dependent_false<T>::value,
-                      "ljson::json::to<T> requires C++20 and reflect-cpp rfl/json");
+                      "LJson::Json::to<T> requires C++20 and reflect-cpp rfl/json");
         return T();
     }
 
@@ -337,53 +337,53 @@ public:
 #endif
 };
 
-inline json_view view(const char* text) {
-    return json_view(text);
+inline JsonView view(const char* text) {
+    return JsonView(text);
 }
 
-inline json_view view(const std::string& text) {
-    return json_view(text);
+inline JsonView view(const std::string& text) {
+    return JsonView(text);
 }
 
-inline json_view view(const json& text) noexcept {
+inline JsonView view(const Json& text) noexcept {
     return text.view();
 }
 
-inline json text(json_view value) {
-    return json(value);
+inline Json text(JsonView value) {
+    return Json(value);
 }
 
-inline backend active_backend() noexcept {
+inline Backend active_backend() noexcept {
 #if LJSON_HAS_RFL_JSON
-    return backend::rfl_json;
+    return Backend::rfl_json;
 #elif LJSON_HAS_YYJSON
-    return backend::yyjson;
+    return Backend::yyjson;
 #elif LJSON_HAS_SIMDJSON
-    return backend::simdjson;
+    return Backend::simdjson;
 #elif LJSON_HAS_NLOHMANN_JSON
-    return backend::nlohmann_json;
+    return Backend::nlohmann_json;
 #elif LJSON_HAS_JSONCPP
-    return backend::jsoncpp;
+    return Backend::jsoncpp;
 #else
-    return backend::text;
+    return Backend::text;
 #endif
 }
 
-inline const char* backend_name(backend value) noexcept {
+inline const char* backend_name(Backend value) noexcept {
     switch (value) {
-    case backend::text:
+    case Backend::text:
         return "text";
-    case backend::nlohmann_json:
+    case Backend::nlohmann_json:
         return "nlohmann/json";
-    case backend::jsoncpp:
+    case Backend::jsoncpp:
         return "jsoncpp";
-    case backend::simdjson:
+    case Backend::simdjson:
         return "simdjson";
-    case backend::yyjson:
+    case Backend::yyjson:
         return LJSON_HAS_RFL_YYJSON ? "rfl/thirdparty/yyjson" : "yyjson";
-    case backend::rfl_json:
+    case Backend::rfl_json:
         return "rfl/json";
-    case backend::none:
+    case Backend::none:
     default:
         return "none";
     }
@@ -397,21 +397,21 @@ inline bool has_static_reflection() noexcept {
     return LJSON_HAS_STATIC_REFLECTION != 0;
 }
 
-inline std::string to_string(json_view value) {
+inline std::string to_string(JsonView value) {
     return value.str();
 }
 
-inline std::string to_string(const json& value) {
+inline std::string to_string(const Json& value) {
     return value.str();
 }
 
 #if LJSON_HAS_NLOHMANN_JSON
 
-inline nlohmann::json parse_nlohmann(json_view text) {
+inline nlohmann::json parse_nlohmann(JsonView text) {
     return nlohmann::json::parse(text.data(), text.data() + text.size());
 }
 
-inline nlohmann::json to_nlohmann(json_view text) {
+inline nlohmann::json to_nlohmann(JsonView text) {
     return parse_nlohmann(text);
 }
 
@@ -423,30 +423,30 @@ inline std::string to_string(const nlohmann::json& value) {
 
 #if LJSON_HAS_JSONCPP
 
-inline Json::Value parse_jsoncpp(json_view text) {
-    Json::CharReaderBuilder builder;
-    Json::Value root;
+inline ::Json::Value parse_jsoncpp(JsonView text) {
+    ::Json::CharReaderBuilder builder;
+    ::Json::Value root;
     std::string errors;
-    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    std::unique_ptr<::Json::CharReader> reader(builder.newCharReader());
     if (!reader->parse(text.data(), text.data() + text.size(), &root, &errors)) {
         throw std::runtime_error(errors.empty() ? "JsonCpp failed to parse JSON" : errors);
     }
     return root;
 }
 
-inline Json::Value parse_cppjson(json_view text) {
+inline ::Json::Value parse_cppjson(JsonView text) {
     return parse_jsoncpp(text);
 }
 
-inline Json::Value to_jsoncpp(json_view text) {
+inline ::Json::Value to_jsoncpp(JsonView text) {
     return parse_jsoncpp(text);
 }
 
-inline Json::Value to_cppjson(json_view text) {
+inline ::Json::Value to_cppjson(JsonView text) {
     return parse_jsoncpp(text);
 }
 
-inline std::string to_string(const Json::Value& value) {
+inline std::string to_string(const ::Json::Value& value) {
     return detail::jsoncpp_to_string(value);
 }
 
@@ -463,7 +463,7 @@ public:
     simdjson_document()
         : parser_(new simdjson::dom::parser()) {}
 
-    explicit simdjson_document(json_view text)
+    explicit simdjson_document(JsonView text)
         : parser_(new simdjson::dom::parser()) {
         auto result = parser_->parse(text.data(), text.size());
         if (result.error()) {
@@ -482,16 +482,16 @@ public:
         return root_;
     }
 
-    json text() const {
-        return json(simdjson::to_string(root_));
+    Json text() const {
+        return Json(simdjson::to_string(root_));
     }
 
-    operator json() const {
+    operator Json() const {
         return text();
     }
 };
 
-inline simdjson_document parse_simdjson(json_view text) {
+inline simdjson_document parse_simdjson(JsonView text) {
     return simdjson_document(text);
 }
 
@@ -518,7 +518,7 @@ private:
 public:
     yyjson_document() = default;
 
-    explicit yyjson_document(json_view text, yyjson_read_flag flags = YYJSON_READ_NOFLAG) {
+    explicit yyjson_document(JsonView text, yyjson_read_flag flags = YYJSON_READ_NOFLAG) {
         yyjson_read_err err;
         doc_ = yyjson_read_opts(const_cast<char*>(text.data()), text.size(), flags, nullptr, &err);
         if (!doc_) {
@@ -571,16 +571,16 @@ public:
         doc_ = doc;
     }
 
-    json text() const {
-        return json(detail::yyjson_to_string(doc_));
+    Json text() const {
+        return Json(detail::yyjson_to_string(doc_));
     }
 
-    operator json() const {
+    operator Json() const {
         return text();
     }
 };
 
-inline yyjson_document parse_yyjson(json_view text,
+inline yyjson_document parse_yyjson(JsonView text,
                                     yyjson_read_flag flags = YYJSON_READ_NOFLAG) {
     return yyjson_document(text, flags);
 }
@@ -619,8 +619,8 @@ inline std::string write(const T& value) {
 }
 
 template<class T>
-inline json from(const T& value) {
-    return json::from(value);
+inline Json from(const T& value) {
+    return Json::from(value);
 }
 
 template<class T>
@@ -629,12 +629,12 @@ inline auto read(const std::string& text) -> decltype(rfl::json::read<T>(text)) 
 }
 
 template<class T>
-inline auto read(json_view text) -> decltype(rfl::json::read<T>(std::string())) {
+inline auto read(JsonView text) -> decltype(rfl::json::read<T>(std::string())) {
     return rfl::json::read<T>(text.str());
 }
 
 template<class T>
-inline auto read(const json& text) -> decltype(rfl::json::read<T>(text.str())) {
+inline auto read(const Json& text) -> decltype(rfl::json::read<T>(text.str())) {
     return rfl::json::read<T>(text.str());
 }
 
@@ -649,12 +649,12 @@ inline T read_or_throw(const std::string& text) {
 }
 
 template<class T>
-inline T read_or_throw(json_view text) {
+inline T read_or_throw(JsonView text) {
     return read<T>(text).value();
 }
 
 template<class T>
-inline T read_or_throw(const json& text) {
+inline T read_or_throw(const Json& text) {
     return read<T>(text).value();
 }
 
@@ -669,12 +669,12 @@ inline T to(const std::string& text) {
 }
 
 template<class T>
-inline T to(json_view text) {
+inline T to(JsonView text) {
     return read_or_throw<T>(text);
 }
 
 template<class T>
-inline T to(const json& text) {
+inline T to(const Json& text) {
     return text.template to<T>();
 }
 
@@ -688,42 +688,42 @@ inline T to(const char* text) {
 template<class T>
 inline std::string write(const T&) {
     static_assert(detail::dependent_false<T>::value,
-                  "ljson::write<T> requires C++20 and reflect-cpp rfl/json");
+                  "LJson::write<T> requires C++20 and reflect-cpp rfl/json");
     return std::string();
 }
 
 template<class T>
-inline json from(const T&) {
+inline Json from(const T&) {
     static_assert(detail::dependent_false<T>::value,
-                  "ljson::from<T> requires C++20 and reflect-cpp rfl/json");
-    return json();
+                  "LJson::from<T> requires C++20 and reflect-cpp rfl/json");
+    return Json();
 }
 
 template<class T>
 inline T read(const std::string&) {
     static_assert(detail::dependent_false<T>::value,
-                  "ljson::read<T> requires C++20 and reflect-cpp rfl/json");
+                  "LJson::read<T> requires C++20 and reflect-cpp rfl/json");
     return T();
 }
 
 template<class T>
-inline T read(json_view) {
+inline T read(JsonView) {
     static_assert(detail::dependent_false<T>::value,
-                  "ljson::read<T> requires C++20 and reflect-cpp rfl/json");
+                  "LJson::read<T> requires C++20 and reflect-cpp rfl/json");
     return T();
 }
 
 template<class T>
-inline T read(const json&) {
+inline T read(const Json&) {
     static_assert(detail::dependent_false<T>::value,
-                  "ljson::read<T> requires C++20 and reflect-cpp rfl/json");
+                  "LJson::read<T> requires C++20 and reflect-cpp rfl/json");
     return T();
 }
 
 template<class T>
 inline T read(const char*) {
     static_assert(detail::dependent_false<T>::value,
-                  "ljson::read<T> requires C++20 and reflect-cpp rfl/json");
+                  "LJson::read<T> requires C++20 and reflect-cpp rfl/json");
     return T();
 }
 
@@ -733,12 +733,12 @@ inline T read_or_throw(const std::string& text) {
 }
 
 template<class T>
-inline T read_or_throw(json_view text) {
+inline T read_or_throw(JsonView text) {
     return read<T>(text);
 }
 
 template<class T>
-inline T read_or_throw(const json& text) {
+inline T read_or_throw(const Json& text) {
     return read<T>(text);
 }
 
@@ -753,12 +753,12 @@ inline T to(const std::string& text) {
 }
 
 template<class T>
-inline T to(json_view text) {
+inline T to(JsonView text) {
     return read_or_throw<T>(text);
 }
 
 template<class T>
-inline T to(const json& text) {
+inline T to(const Json& text) {
     return text.template to<T>();
 }
 
@@ -769,6 +769,6 @@ inline T to(const char* text) {
 
 #endif
 
-} // namespace ljson
+} // namespace LJson
 
 #endif // LTOOL_LJSON_INCLUDE

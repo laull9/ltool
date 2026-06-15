@@ -9,7 +9,7 @@ project(ltool
 include(GNUInstallDirs)
 
 option(LTOOL_USE_EXTERNAL_FMT "Use an external fmt package instead of bundled headers" OFF)
-option(LTOOL_USE_MAGIC_ENUM "Enable magic_enum support in lstring" ON)
+option(LTOOL_USE_MAGIC_ENUM "Enable magic_enum support in LString" ON)
 option(LTOOL_USE_RFL_JSON "Enable reflect-cpp rfl/json integration when available" ON)
 option(LTOOL_USE_NLOHMANN_JSON "Enable nlohmann/json integration when available" ON)
 option(LTOOL_USE_JSONCPP "Enable JsonCpp integration when available" ON)

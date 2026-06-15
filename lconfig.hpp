@@ -1,5 +1,5 @@
 /**
- * @file lconfig.hpp
+ * @file LConfig.hpp
  * @brief ltool 的版本、平台和语言特性配置入口。
  */
 
@@ -228,15 +228,15 @@
 
 #define LTOOL_UNUSED(value) (void)(value)
 
-namespace ltool {
+namespace LTool {
 
-struct version {
+struct Version {
     int major;
     int minor;
     int patch;
 };
 
-inline constexpr version current_version() noexcept {
+inline constexpr Version current_version() noexcept {
     return {LTOOL_VERSION_MAJOR, LTOOL_VERSION_MINOR, LTOOL_VERSION_PATCH};
 }
 
@@ -244,6 +244,6 @@ inline constexpr const char* version_string() noexcept {
     return LTOOL_VERSION_STRING;
 }
 
-} // namespace ltool
+} // namespace LTool
 
 #endif // LTOOL_LCONFIG_INCLUDE
