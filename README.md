@@ -6,7 +6,7 @@
 
 - 纯头文件：复制到项目中或通过 `-I` 指向本目录即可。
 - 中文文本友好：`LString` 内部按 UTF-8 字节保存，边界 API 支持 GBK/GB2312、UTF-16、UTF-32、Latin1 等编码转换。
-- 常用能力打包：字符串处理、文件读写、目录遍历、路径辅助、Base64、MD5、枚举名转换和线程安全包装。
+- 常用能力打包：字符串处理、文件读写、目录遍历、路径辅助、随机数、Base64、MD5、枚举名转换和线程安全包装。
 - 尽量贴近标准库：类型和接口围绕 `std::string`、`std::filesystem::path`、`std::mutex` / `std::shared_mutex` 展开。
 - 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`。
 
@@ -77,8 +77,9 @@ cmake --install build/ltool
 ### `LTool.hpp`
 
 `LTool.hpp` 是常用组件总入口，会引入 `detail/LConfig.hpp`、`LString.hpp`、`LLog.hpp`、
-`LJson.hpp`、`LFile.hpp`、`Locked.hpp` 和 `LThreadPool.hpp`。其中 `LFile.hpp` 只在检测到
-C++17 `std::filesystem` 时引入，`LThreadPool.hpp` 只在 C++17 起引入，
+`LJson.hpp`、`LEnv.hpp`、`LTimer.hpp`、`LRandom.hpp`、`LFile.hpp`、`Locked.hpp` 和
+`LThreadPool.hpp`。其中 `LFile.hpp` 只在检测到 C++17 `std::filesystem` 时引入，
+`LThreadPool.hpp` 只在 C++17 起引入，
 `Locked.hpp` 只在检测到 C++20 concepts 时引入。
 
 ### `detail/LConfig.hpp`
@@ -260,6 +261,45 @@ void file_example() {
 }
 ```
 
+### `LRandom.hpp`
+
+`LRandom` 是 `std::random` 的轻量封装，默认使用 `std::mt19937_64`。对象可以用固定种子构造，适合测试、模拟和可复现实验；也可以使用 `LRandom::shared()` 或 `LRandom::rand_*()` 静态快捷函数获取线程局部默认实例，少写样板代码。需要标准库分布器时，可以通过 `engine()` 直接访问底层引擎。
+
+常用能力：
+
+- 数值随机：`integer()`、`real()`、`normal()`、`exponential()`、`boolean()`、`chance()`、`roll()`。
+- 容器随机：`choice()`、`weighted_choice()`、`shuffle()`、`shuffled()`、`sample()`。
+- 字节和文本：`bytes()`、`fill_bytes()`、`string()`、`hex()`、`uuid_v4()`、`uuid_v7()`。
+- 安全 UUID：`safe_uuid_v4()`、`safe_uuid_v7()` 使用操作系统安全随机源；`uuid_v4()`、`uuid_v7()` 使用当前 `LRandom` 引擎，适合可复现流程。
+- 无上下文快捷函数：`rand_int()`、`rand_real()`、`rand_choice()`、`rand_shuffle()`、`rand_string()`、`rand_uuid_v4()`、`rand_uuid_v7()` 等；它们使用 `thread_local` 默认实例，多线程调用时不会共享同一个随机引擎。
+
+示例：
+
+```cpp
+#include "LRandom.hpp"
+
+#include <vector>
+
+void random_example() {
+    LRandom rng(42);
+
+    auto dice = rng.roll();
+    auto score = rng.real(0.0, 100.0);
+    auto token = rng.string(12);
+
+    std::vector<int> values {1, 2, 3, 4};
+    rng.shuffle(values);
+    auto one = rng.choice(values);
+
+    auto id = LRandom::shared().uuid_v4();
+    auto quick = LRandom::rand_int(1, 100);
+    auto quick_one = LRandom::rand_choice(values);
+    auto quick_id = LRandom::rand_uuid_v7();
+    auto safe_id = LRandom::safe_uuid_v4();
+    auto safe_time_id = LRandom::safe_uuid_v7();
+}
+```
+
 ### `Locked.hpp`
 
 `Locked<T, Mutex>` 用一个互斥量保护一个对象，适合把“拿锁、访问数据、释放锁”的重复代码集中起来。默认互斥量是 `std::shared_mutex`：读访问使用共享锁，写访问使用独占锁；如果传入的互斥量不支持共享锁，读访问也会退化为独占锁。
@@ -340,6 +380,9 @@ GBK/GB2312 转换在 Windows 上使用系统代码页 API；在 Unix-like 平台
 ├── detail/LFmt.hpp
 ├── LLog.hpp
 ├── LJson.hpp
+├── LEnv.hpp
+├── LTimer.hpp
+├── LRandom.hpp
 ├── LString.hpp
 ├── LFile.hpp
 ├── Locked.hpp

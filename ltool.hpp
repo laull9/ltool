@@ -13,6 +13,8 @@
 #include "LJson.hpp"
 #include "LEnv.hpp"
 #include "LTimer.hpp"
+#include "LRandom.hpp"
+#include "LTable.hpp"
 
 #if LTOOL_HAS_FILESYSTEM
 #include "LFile.hpp"
