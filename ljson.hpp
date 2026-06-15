@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <memory>
@@ -210,612 +211,191 @@ public:
 
 class Json {
 private:
-    enum class kind {
-        null_value,
-        boolean,
-        number,
-        string,
-        array,
-        object
-    };
-
-    struct node_type {
-        kind type = kind::null_value;
-        bool bool_value = false;
-        std::string text;
-        std::vector<node_type> array_values;
-        std::vector<std::pair<std::string, node_type>> object_values;
+    enum class relation_kind {
+        root,
+        object,
+        array
     };
 
     mutable std::string text_;
-    mutable std::shared_ptr<node_type> root_;
-    mutable node_type* node_ = nullptr;
+    mutable std::shared_ptr<yyjson_mut_doc> doc_;
+    mutable yyjson_mut_val* value_ = nullptr;
+    mutable yyjson_mut_val* parent_ = nullptr;
+    mutable relation_kind relation_ = relation_kind::root;
+    mutable std::string key_;
+    mutable std::size_t index_ = 0;
     mutable std::shared_ptr<bool> text_dirty_;
     bool proxy_ = false;
     bool valid_ = true;
 
-    Json(std::shared_ptr<node_type> root,
-         node_type* node,
+    static std::shared_ptr<yyjson_mut_doc> make_doc() {
+        auto* doc = yyjson_mut_doc_new(nullptr);
+        if (!doc) {
+            throw std::bad_alloc();
+        }
+        return std::shared_ptr<yyjson_mut_doc>(doc, yyjson_mut_doc_free);
+    }
+
+    static yyjson_mut_val* require_value(yyjson_mut_val* value) {
+        if (!value) {
+            throw std::bad_alloc();
+        }
+        return value;
+    }
+
+    Json(std::shared_ptr<yyjson_mut_doc> doc,
+         yyjson_mut_val* value,
+         yyjson_mut_val* parent,
+         relation_kind relation,
+         std::string key,
+         std::size_t index,
          std::shared_ptr<bool> text_dirty,
          bool proxy)
-        : root_(std::move(root)),
-          node_(node),
+        : doc_(std::move(doc)),
+          value_(value),
+          parent_(parent),
+          relation_(relation),
+          key_(std::move(key)),
+          index_(index),
           text_dirty_(std::move(text_dirty)),
           proxy_(proxy) {}
 
-    class parser {
-    private:
-        const char* data_ = nullptr;
-        std::size_t size_ = 0;
-        std::size_t pos_ = 0;
+    template<class Maker>
+    void init_root(Maker&& maker) {
+        doc_ = make_doc();
+        value_ = require_value(std::forward<Maker>(maker)(doc_.get()));
+        yyjson_mut_doc_set_root(doc_.get(), value_);
+        parent_ = nullptr;
+        relation_ = relation_kind::root;
+        text_dirty_ = std::make_shared<bool>(true);
+        proxy_ = false;
+        valid_ = true;
+    }
 
-        bool eof() const noexcept {
-            return pos_ >= size_;
+    void init_from_mut_doc_copy(yyjson_mut_doc* doc) {
+        if (!doc || !yyjson_mut_doc_get_root(doc)) {
+            init_root([](yyjson_mut_doc* target) { return yyjson_mut_null(target); });
+            return;
         }
 
-        char peek() const {
-            return eof() ? '\0' : data_[pos_];
+        auto* copied = yyjson_mut_doc_mut_copy(doc, nullptr);
+        if (!copied) {
+            throw std::bad_alloc();
+        }
+        doc_ = std::shared_ptr<yyjson_mut_doc>(copied, yyjson_mut_doc_free);
+        value_ = yyjson_mut_doc_get_root(doc_.get());
+        parent_ = nullptr;
+        relation_ = relation_kind::root;
+        text_dirty_ = std::make_shared<bool>(true);
+        proxy_ = false;
+        valid_ = true;
+    }
+
+    void init_from_doc_copy(yyjson_doc* doc) {
+        if (!doc || !yyjson_doc_get_root(doc)) {
+            init_root([](yyjson_mut_doc* target) { return yyjson_mut_null(target); });
+            return;
         }
 
-        char take() {
-            if (eof()) {
-                fail("unexpected end of JSON");
-            }
-            return data_[pos_++];
+        auto* copied = yyjson_doc_mut_copy(doc, nullptr);
+        if (!copied) {
+            throw std::bad_alloc();
         }
-
-        [[noreturn]] void fail(const std::string& message) const {
-            throw std::runtime_error("LJson parse error at byte " +
-                                     std::to_string(pos_) + ": " + message);
-        }
-
-        void skip_ws() {
-            while (!eof() && std::isspace(static_cast<unsigned char>(peek()))) {
-                ++pos_;
-            }
-        }
-
-        bool consume(char value) {
-            skip_ws();
-            if (peek() == value) {
-                ++pos_;
-                return true;
-            }
-            return false;
-        }
-
-        void expect(char value) {
-            skip_ws();
-            if (take() != value) {
-                fail(std::string("expected '") + value + "'");
-            }
-        }
-
-        bool match_literal(const char* literal) {
-            const auto start = pos_;
-            for (const char* p = literal; *p; ++p) {
-                if (eof() || data_[pos_++] != *p) {
-                    pos_ = start;
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        static void append_utf8(std::string& out, unsigned value) {
-            if (value <= 0x7f) {
-                out.push_back(static_cast<char>(value));
-            } else if (value <= 0x7ff) {
-                out.push_back(static_cast<char>(0xc0 | (value >> 6)));
-                out.push_back(static_cast<char>(0x80 | (value & 0x3f)));
-            } else if (value <= 0xffff) {
-                out.push_back(static_cast<char>(0xe0 | (value >> 12)));
-                out.push_back(static_cast<char>(0x80 | ((value >> 6) & 0x3f)));
-                out.push_back(static_cast<char>(0x80 | (value & 0x3f)));
-            } else {
-                out.push_back(static_cast<char>(0xf0 | (value >> 18)));
-                out.push_back(static_cast<char>(0x80 | ((value >> 12) & 0x3f)));
-                out.push_back(static_cast<char>(0x80 | ((value >> 6) & 0x3f)));
-                out.push_back(static_cast<char>(0x80 | (value & 0x3f)));
-            }
-        }
-
-        unsigned parse_hex4() {
-            unsigned value = 0;
-            for (int i = 0; i < 4; ++i) {
-                const char ch = take();
-                value <<= 4;
-                if (ch >= '0' && ch <= '9') {
-                    value += static_cast<unsigned>(ch - '0');
-                } else if (ch >= 'a' && ch <= 'f') {
-                    value += static_cast<unsigned>(10 + ch - 'a');
-                } else if (ch >= 'A' && ch <= 'F') {
-                    value += static_cast<unsigned>(10 + ch - 'A');
-                } else {
-                    fail("invalid unicode escape");
-                }
-            }
-            return value;
-        }
-
-        std::string parse_string_text() {
-            expect('"');
-            std::string out;
-            while (true) {
-                if (eof()) {
-                    fail("unterminated string");
-                }
-                const char ch = take();
-                if (ch == '"') {
-                    return out;
-                }
-                if (static_cast<unsigned char>(ch) < 0x20) {
-                    fail("control character in string");
-                }
-                if (ch != '\\') {
-                    out.push_back(ch);
-                    continue;
-                }
-
-                const char esc = take();
-                switch (esc) {
-                case '"':
-                case '\\':
-                case '/':
-                    out.push_back(esc);
-                    break;
-                case 'b':
-                    out.push_back('\b');
-                    break;
-                case 'f':
-                    out.push_back('\f');
-                    break;
-                case 'n':
-                    out.push_back('\n');
-                    break;
-                case 'r':
-                    out.push_back('\r');
-                    break;
-                case 't':
-                    out.push_back('\t');
-                    break;
-                case 'u': {
-                    unsigned code = parse_hex4();
-                    if (code >= 0xd800 && code <= 0xdbff) {
-                        if (take() != '\\' || take() != 'u') {
-                            fail("missing low surrogate");
-                        }
-                        const unsigned low = parse_hex4();
-                        if (low < 0xdc00 || low > 0xdfff) {
-                            fail("invalid low surrogate");
-                        }
-                        code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
-                    }
-                    append_utf8(out, code);
-                    break;
-                }
-                default:
-                    fail("invalid escape");
-                }
-            }
-        }
-
-        node_type parse_array() {
-            expect('[');
-            node_type out;
-            out.type = kind::array;
-            skip_ws();
-            if (consume(']')) {
-                return out;
-            }
-
-            while (true) {
-                out.array_values.push_back(parse_value());
-                skip_ws();
-                if (consume(']')) {
-                    return out;
-                }
-                expect(',');
-            }
-        }
-
-        node_type parse_object() {
-            expect('{');
-            node_type out;
-            out.type = kind::object;
-            skip_ws();
-            if (consume('}')) {
-                return out;
-            }
-
-            while (true) {
-                skip_ws();
-                if (peek() != '"') {
-                    fail("expected object key");
-                }
-                auto key = parse_string_text();
-                expect(':');
-                out.object_values.push_back(std::make_pair(std::move(key), parse_value()));
-                skip_ws();
-                if (consume('}')) {
-                    return out;
-                }
-                expect(',');
-            }
-        }
-
-        node_type parse_number() {
-            const std::size_t start = pos_;
-            if (peek() == '-') {
-                ++pos_;
-            }
-            if (peek() == '0') {
-                ++pos_;
-            } else if (std::isdigit(static_cast<unsigned char>(peek()))) {
-                while (std::isdigit(static_cast<unsigned char>(peek()))) {
-                    ++pos_;
-                }
-            } else {
-                fail("invalid number");
-            }
-            if (peek() == '.') {
-                ++pos_;
-                if (!std::isdigit(static_cast<unsigned char>(peek()))) {
-                    fail("invalid fraction");
-                }
-                while (std::isdigit(static_cast<unsigned char>(peek()))) {
-                    ++pos_;
-                }
-            }
-            if (peek() == 'e' || peek() == 'E') {
-                ++pos_;
-                if (peek() == '+' || peek() == '-') {
-                    ++pos_;
-                }
-                if (!std::isdigit(static_cast<unsigned char>(peek()))) {
-                    fail("invalid exponent");
-                }
-                while (std::isdigit(static_cast<unsigned char>(peek()))) {
-                    ++pos_;
-                }
-            }
-
-            node_type out;
-            out.type = kind::number;
-            out.text.assign(data_ + start, pos_ - start);
-            return out;
-        }
-
-    public:
-        explicit parser(JsonView text)
-            : data_(text.data()), size_(text.size()) {}
-
-        node_type parse_value() {
-            skip_ws();
-            switch (peek()) {
-            case '{':
-                return parse_object();
-            case '[':
-                return parse_array();
-            case '"': {
-                node_type out;
-                out.type = kind::string;
-                out.text = parse_string_text();
-                return out;
-            }
-            case 't': {
-                if (!match_literal("true")) {
-                    fail("invalid literal");
-                }
-                node_type out;
-                out.type = kind::boolean;
-                out.bool_value = true;
-                return out;
-            }
-            case 'f': {
-                if (!match_literal("false")) {
-                    fail("invalid literal");
-                }
-                node_type out;
-                out.type = kind::boolean;
-                out.bool_value = false;
-                return out;
-            }
-            case 'n': {
-                if (!match_literal("null")) {
-                    fail("invalid literal");
-                }
-                return node_type();
-            }
-            default:
-                if (peek() == '-' || std::isdigit(static_cast<unsigned char>(peek()))) {
-                    return parse_number();
-                }
-                fail("expected JSON value");
-            }
-        }
-
-        node_type parse_document() {
-            auto out = parse_value();
-            skip_ws();
-            if (!eof()) {
-                fail("trailing characters");
-            }
-            return out;
-        }
-    };
-
-    static node_type make_null() {
-        return node_type();
+        doc_ = std::shared_ptr<yyjson_mut_doc>(copied, yyjson_mut_doc_free);
+        value_ = yyjson_mut_doc_get_root(doc_.get());
+        parent_ = nullptr;
+        relation_ = relation_kind::root;
+        text_dirty_ = std::make_shared<bool>(true);
+        proxy_ = false;
+        valid_ = true;
     }
 
-    static node_type make_bool(bool value) {
-        node_type out;
-        out.type = kind::boolean;
-        out.bool_value = value;
-        return out;
+    void init_from_value_copy(yyjson_val* value) {
+        doc_ = make_doc();
+        value_ = value ? yyjson_val_mut_copy(doc_.get(), value) : yyjson_mut_null(doc_.get());
+        value_ = require_value(value_);
+        yyjson_mut_doc_set_root(doc_.get(), value_);
+        text_dirty_ = std::make_shared<bool>(true);
+        valid_ = true;
     }
 
-    static node_type make_string(std::string value) {
-        node_type out;
-        out.type = kind::string;
-        out.text = std::move(value);
-        return out;
+    void init_from_value_copy(yyjson_mut_val* value) {
+        doc_ = make_doc();
+        value_ = value ? yyjson_mut_val_mut_copy(doc_.get(), value) : yyjson_mut_null(doc_.get());
+        value_ = require_value(value_);
+        yyjson_mut_doc_set_root(doc_.get(), value_);
+        text_dirty_ = std::make_shared<bool>(true);
+        valid_ = true;
     }
 
-    template<class T>
-    static node_type make_number(T value) {
-        node_type out;
-        out.type = kind::number;
-        out.text = number_to_string(value);
-        return out;
-    }
-
-    static node_type make_array() {
-        node_type out;
-        out.type = kind::array;
-        return out;
-    }
-
-    static node_type make_object() {
-        node_type out;
-        out.type = kind::object;
-        return out;
-    }
-
-    static node_type make_json_value(const Json& value) {
-        return value.const_value();
-    }
-
-    static node_type make_json_value(std::nullptr_t) {
-        return make_null();
-    }
-
-    static node_type make_json_value(bool value) {
-        return make_bool(value);
-    }
-
-    static node_type make_json_value(const char* value) {
-        return value ? make_string(value) : make_null();
-    }
-
-    static node_type make_json_value(char* value) {
-        return value ? make_string(value) : make_null();
-    }
-
-    static node_type make_json_value(const std::string& value) {
-        return make_string(value);
-    }
-
-    static node_type make_json_value(std::string&& value) {
-        return make_string(std::move(value));
-    }
-
-    template<class T,
-             typename std::enable_if<std::is_arithmetic<detail::remove_cvref_t<T>>::value &&
-                                         !std::is_same<detail::remove_cvref_t<T>, bool>::value,
-                                     int>::type = 0>
-    static node_type make_json_value(T value) {
-        return make_number(value);
-    }
-
-    template<class T>
-    static std::string number_to_string(T value) {
-        std::ostringstream os;
-        os << std::setprecision(17) << value;
-        return os.str();
-    }
-
-    static std::string number_to_string(int value) {
-        return std::to_string(value);
-    }
-
-    static std::string number_to_string(unsigned int value) {
-        return std::to_string(value);
-    }
-
-    static std::string number_to_string(long value) {
-        return std::to_string(value);
-    }
-
-    static std::string number_to_string(unsigned long value) {
-        return std::to_string(value);
-    }
-
-    static std::string number_to_string(long long value) {
-        return std::to_string(value);
-    }
-
-    static std::string number_to_string(unsigned long long value) {
-        return std::to_string(value);
-    }
-
-    static node_type parse_node(JsonView text) {
+    void parse_text_now(JsonView text) {
         if (text.empty()) {
-            return node_type();
-        }
-        return parser(text).parse_document();
-    }
-
-    static void append_escaped_string(const std::string& value, std::string& out) {
-        static const char* hex = "0123456789abcdef";
-        out.push_back('"');
-        for (unsigned char ch : value) {
-            switch (ch) {
-            case '"':
-                out += "\\\"";
-                break;
-            case '\\':
-                out += "\\\\";
-                break;
-            case '\b':
-                out += "\\b";
-                break;
-            case '\f':
-                out += "\\f";
-                break;
-            case '\n':
-                out += "\\n";
-                break;
-            case '\r':
-                out += "\\r";
-                break;
-            case '\t':
-                out += "\\t";
-                break;
-            default:
-                if (ch < 0x20) {
-                    out += "\\u00";
-                    out.push_back(hex[ch >> 4]);
-                    out.push_back(hex[ch & 0x0f]);
-                } else {
-                    out.push_back(static_cast<char>(ch));
-                }
+            init_root([](yyjson_mut_doc* target) { return yyjson_mut_null(target); });
+            if (text_dirty_) {
+                *text_dirty_ = false;
             }
+            return;
         }
-        out.push_back('"');
-    }
 
-    static void dump_node(const node_type& value, std::string& out, int indent, int depth) {
-        switch (value.type) {
-        case kind::null_value:
-            out += "null";
-            break;
-        case kind::boolean:
-            out += value.bool_value ? "true" : "false";
-            break;
-        case kind::number:
-            out += value.text.empty() ? "0" : value.text;
-            break;
-        case kind::string:
-            append_escaped_string(value.text, out);
-            break;
-        case kind::array:
-            dump_array(value, out, indent, depth);
-            break;
-        case kind::object:
-            dump_object(value, out, indent, depth);
-            break;
+        yyjson_read_err err{};
+        auto* parsed = yyjson_read_opts(const_cast<char*>(text.data()), text.size(),
+                                        YYJSON_READ_NOFLAG, nullptr, &err);
+        if (!parsed) {
+            throw std::runtime_error("LJson parse error at byte " +
+                                     std::to_string(err.pos) + ": " +
+                                     (err.msg ? err.msg : "yyjson failed to parse JSON"));
         }
-    }
 
-    static void append_indent(std::string& out, int count) {
-        for (int i = 0; i < count; ++i) {
-            out.push_back(' ');
+        auto* copied = yyjson_doc_mut_copy(parsed, nullptr);
+        yyjson_doc_free(parsed);
+        if (!copied) {
+            throw std::bad_alloc();
         }
-    }
 
-    static void dump_array(const node_type& value, std::string& out, int indent, int depth) {
-        out.push_back('[');
-        for (std::size_t i = 0; i < value.array_values.size(); ++i) {
-            if (i != 0) {
-                out.push_back(',');
-            }
-            if (indent >= 0) {
-                out.push_back('\n');
-                append_indent(out, (depth + 1) * indent);
-            }
-            dump_node(value.array_values[i], out, indent, depth + 1);
+        doc_ = std::shared_ptr<yyjson_mut_doc>(copied, yyjson_mut_doc_free);
+        value_ = yyjson_mut_doc_get_root(doc_.get());
+        if (!value_) {
+            value_ = require_value(yyjson_mut_null(doc_.get()));
+            yyjson_mut_doc_set_root(doc_.get(), value_);
         }
-        if (indent >= 0 && !value.array_values.empty()) {
-            out.push_back('\n');
-            append_indent(out, depth * indent);
-        }
-        out.push_back(']');
-    }
-
-    static void dump_object(const node_type& value, std::string& out, int indent, int depth) {
-        out.push_back('{');
-        for (std::size_t i = 0; i < value.object_values.size(); ++i) {
-            if (i != 0) {
-                out.push_back(',');
-            }
-            if (indent >= 0) {
-                out.push_back('\n');
-                append_indent(out, (depth + 1) * indent);
-            }
-            append_escaped_string(value.object_values[i].first, out);
-            out.push_back(':');
-            if (indent >= 0) {
-                out.push_back(' ');
-            }
-            dump_node(value.object_values[i].second, out, indent, depth + 1);
-        }
-        if (indent >= 0 && !value.object_values.empty()) {
-            out.push_back('\n');
-            append_indent(out, depth * indent);
-        }
-        out.push_back('}');
-    }
-
-    node_type& mutable_value() {
-        ensure_value();
-        mark_dirty();
-        return *node_;
-    }
-
-    const node_type& const_value() const {
-        ensure_value();
-        return *node_;
+        parent_ = nullptr;
+        relation_ = relation_kind::root;
+        text_dirty_ = std::make_shared<bool>(false);
+        proxy_ = false;
+        valid_ = true;
     }
 
     void ensure_value() const {
         if (!valid_) {
             throw std::logic_error("LJson::Json references no value");
         }
-        if (node_) {
+        if (value_) {
             return;
         }
 
         auto* self = const_cast<Json*>(this);
-        self->root_ = std::make_shared<node_type>(parse_node(JsonView(text_)));
-        self->node_ = self->root_.get();
-        self->text_dirty_ = std::make_shared<bool>(false);
-        self->proxy_ = false;
+        self->parse_text_now(JsonView(text_));
     }
 
-    void set_value(node_type value) {
-        if (proxy_) {
-            ensure_value();
-            *node_ = std::move(value);
-            mark_dirty();
-            return;
-        }
-
-        root_ = std::make_shared<node_type>(std::move(value));
-        node_ = root_.get();
-        text_dirty_ = std::make_shared<bool>(true);
-        valid_ = true;
+    yyjson_mut_val* mutable_value() {
+        ensure_value();
+        mark_dirty();
+        return value_;
     }
 
-    void sync_text() const {
-        if (!node_) {
-            return;
-        }
-        text_ = dump_node_to_string(*node_);
-        if (!proxy_ && text_dirty_) {
-            *text_dirty_ = false;
-        }
+    yyjson_mut_val* const_value() const {
+        ensure_value();
+        return value_;
+    }
+
+    yyjson_mut_doc* mutable_doc() {
+        ensure_value();
+        return doc_.get();
+    }
+
+    yyjson_mut_doc* const_doc() const {
+        ensure_value();
+        return doc_.get();
     }
 
     void mark_dirty() {
@@ -825,86 +405,245 @@ private:
         *text_dirty_ = true;
     }
 
-    static std::string dump_node_to_string(const node_type& value, int indent = -1) {
-        std::string out;
-        dump_node(value, out, indent, 0);
+    void sync_text() const {
+        if (!value_) {
+            return;
+        }
+
+        const auto flags = YYJSON_WRITE_NOFLAG;
+        std::size_t size = 0;
+        char* data = yyjson_mut_val_write(value_, flags, &size);
+        if (!data) {
+            return;
+        }
+        text_.assign(data, size);
+        std::free(data);
+        if (!proxy_ && text_dirty_) {
+            *text_dirty_ = false;
+        }
+    }
+
+    std::string write_current(int indent = -1) const {
+        auto* value = const_value();
+        const auto flags = indent >= 0 ? YYJSON_WRITE_PRETTY : YYJSON_WRITE_NOFLAG;
+        std::size_t size = 0;
+        char* data = yyjson_mut_val_write(value, flags, &size);
+        if (!data) {
+            throw std::runtime_error("yyjson failed to write JSON");
+        }
+        std::string out(data, size);
+        std::free(data);
         return out;
     }
 
-    static node_type& object_child(node_type& value, const std::string& key) {
-        if (value.type == kind::null_value) {
-            value = make_object();
+    void replace_current(yyjson_mut_val* value) {
+        value = require_value(value);
+        if (!proxy_ || relation_ == relation_kind::root) {
+            yyjson_mut_doc_set_root(doc_.get(), value);
+            value_ = value;
+            parent_ = nullptr;
+            relation_ = relation_kind::root;
+            proxy_ = false;
+            mark_dirty();
+            return;
         }
-        if (value.type != kind::object) {
+
+        if (relation_ == relation_kind::object) {
+            auto* key = require_value(yyjson_mut_strncpy(doc_.get(), key_.data(), key_.size()));
+            if (!yyjson_mut_obj_replace(parent_, key, value)) {
+                if (!yyjson_mut_obj_add(parent_, key, value)) {
+                    throw std::runtime_error("yyjson failed to replace object value");
+                }
+                value_ = value;
+            }
+        } else {
+            if (!yyjson_mut_arr_replace(parent_, index_, value)) {
+                throw std::runtime_error("yyjson failed to replace array value");
+            }
+            value_ = value;
+        }
+        mark_dirty();
+    }
+
+    void set_value_from(yyjson_mut_val* value) {
+        if (proxy_) {
+            ensure_value();
+            auto* copied = require_value(yyjson_mut_val_mut_copy(doc_.get(), value));
+            replace_current(copied);
+            return;
+        }
+
+        doc_ = make_doc();
+        value_ = require_value(yyjson_mut_val_mut_copy(doc_.get(), value));
+        yyjson_mut_doc_set_root(doc_.get(), value_);
+        parent_ = nullptr;
+        relation_ = relation_kind::root;
+        text_dirty_ = std::make_shared<bool>(true);
+        valid_ = true;
+    }
+
+    void set_value_from(const Json& value) {
+        set_value_from(value.const_value());
+    }
+
+    template<class Maker>
+    void set_value(Maker&& maker) {
+        if (!doc_) {
+            doc_ = make_doc();
+        }
+        auto* value = require_value(std::forward<Maker>(maker)(doc_.get()));
+        replace_current(value);
+        valid_ = true;
+    }
+
+    static yyjson_mut_val* make_string(yyjson_mut_doc* doc, const std::string& value) {
+        return yyjson_mut_strncpy(doc, value.data(), value.size());
+    }
+
+    static yyjson_mut_val* make_string(yyjson_mut_doc* doc, const char* value) {
+        return value ? yyjson_mut_strcpy(doc, value) : yyjson_mut_null(doc);
+    }
+
+    static yyjson_mut_val* make_number(yyjson_mut_doc* doc, int value) {
+        return yyjson_mut_sint(doc, value);
+    }
+
+    static yyjson_mut_val* make_number(yyjson_mut_doc* doc, unsigned int value) {
+        return yyjson_mut_uint(doc, value);
+    }
+
+    static yyjson_mut_val* make_number(yyjson_mut_doc* doc, long value) {
+        return yyjson_mut_sint(doc, static_cast<int64_t>(value));
+    }
+
+    static yyjson_mut_val* make_number(yyjson_mut_doc* doc, unsigned long value) {
+        return yyjson_mut_uint(doc, static_cast<uint64_t>(value));
+    }
+
+    static yyjson_mut_val* make_number(yyjson_mut_doc* doc, long long value) {
+        return yyjson_mut_sint(doc, static_cast<int64_t>(value));
+    }
+
+    static yyjson_mut_val* make_number(yyjson_mut_doc* doc, unsigned long long value) {
+        return yyjson_mut_uint(doc, static_cast<uint64_t>(value));
+    }
+
+    static yyjson_mut_val* make_number(yyjson_mut_doc* doc, double value) {
+        return yyjson_mut_real(doc, value);
+    }
+
+    template<class T,
+             typename std::enable_if<std::is_arithmetic<detail::remove_cvref_t<T>>::value &&
+                                         !std::is_same<detail::remove_cvref_t<T>, bool>::value,
+                                     int>::type = 0>
+    yyjson_mut_val* make_json_value(T value) {
+        return make_number(mutable_doc(), value);
+    }
+
+    yyjson_mut_val* make_json_value(std::nullptr_t) {
+        return yyjson_mut_null(mutable_doc());
+    }
+
+    yyjson_mut_val* make_json_value(bool value) {
+        return yyjson_mut_bool(mutable_doc(), value);
+    }
+
+    yyjson_mut_val* make_json_value(const char* value) {
+        return make_string(mutable_doc(), value);
+    }
+
+    yyjson_mut_val* make_json_value(char* value) {
+        return make_string(mutable_doc(), value);
+    }
+
+    yyjson_mut_val* make_json_value(const std::string& value) {
+        return make_string(mutable_doc(), value);
+    }
+
+    yyjson_mut_val* make_json_value(std::string&& value) {
+        return make_string(mutable_doc(), value);
+    }
+
+    yyjson_mut_val* make_json_value(const Json& value) {
+        return yyjson_mut_val_mut_copy(mutable_doc(), value.const_value());
+    }
+
+    yyjson_mut_val* ensure_object_value() {
+        auto* value = mutable_value();
+        if (yyjson_mut_is_null(value)) {
+            replace_current(require_value(yyjson_mut_obj(doc_.get())));
+            value = value_;
+        }
+        if (!yyjson_mut_is_obj(value)) {
             throw std::domain_error("LJson::Json value is not an object");
         }
-        for (auto& item : value.object_values) {
-            if (item.first == key) {
-                return item.second;
-            }
-        }
-        value.object_values.push_back(std::make_pair(key, node_type()));
-        return value.object_values.back().second;
+        return value;
     }
 
-    static const node_type& object_child(const node_type& value, const std::string& key) {
-        if (value.type != kind::object) {
+    yyjson_mut_val* ensure_array_value() {
+        auto* value = mutable_value();
+        if (yyjson_mut_is_null(value)) {
+            replace_current(require_value(yyjson_mut_arr(doc_.get())));
+            value = value_;
+        }
+        if (!yyjson_mut_is_arr(value)) {
+            throw std::domain_error("LJson::Json value is not an array");
+        }
+        return value;
+    }
+
+    static yyjson_mut_val* object_child(yyjson_mut_doc* doc,
+                                        yyjson_mut_val* value,
+                                        const std::string& key) {
+        auto* child = yyjson_mut_obj_getn(value, key.data(), key.size());
+        if (child) {
+            return child;
+        }
+
+        auto* key_value = require_value(yyjson_mut_strncpy(doc, key.data(), key.size()));
+        auto* null_value = require_value(yyjson_mut_null(doc));
+        if (!yyjson_mut_obj_add(value, key_value, null_value)) {
+            throw std::runtime_error("yyjson failed to add object key");
+        }
+        return null_value;
+    }
+
+    static yyjson_mut_val* object_child_const(yyjson_mut_val* value,
+                                              const std::string& key) {
+        if (!yyjson_mut_is_obj(value)) {
             throw std::domain_error("LJson::Json value is not an object");
         }
-        for (const auto& item : value.object_values) {
-            if (item.first == key) {
-                return item.second;
+        auto* child = yyjson_mut_obj_getn(value, key.data(), key.size());
+        if (!child) {
+            throw std::out_of_range("LJson::Json object key not found: " + key);
+        }
+        return child;
+    }
+
+    yyjson_mut_val* array_child(yyjson_mut_val* value, std::size_t index) {
+        while (yyjson_mut_arr_size(value) <= index) {
+            auto* item = require_value(yyjson_mut_null(doc_.get()));
+            if (!yyjson_mut_arr_append(value, item)) {
+                throw std::runtime_error("yyjson failed to grow array");
             }
         }
-        throw std::out_of_range("LJson::Json object key not found: " + key);
+        return yyjson_mut_arr_get(value, index);
     }
 
-    static node_type& array_child(node_type& value, std::size_t index) {
-        if (value.type == kind::null_value) {
-            value = make_array();
-        }
-        if (value.type != kind::array) {
+    static yyjson_mut_val* array_child_const(yyjson_mut_val* value, std::size_t index) {
+        if (!yyjson_mut_is_arr(value)) {
             throw std::domain_error("LJson::Json value is not an array");
         }
-        if (index >= value.array_values.size()) {
-            value.array_values.resize(index + 1);
-        }
-        return value.array_values[index];
-    }
-
-    static const node_type& array_child(const node_type& value, std::size_t index) {
-        if (value.type != kind::array) {
-            throw std::domain_error("LJson::Json value is not an array");
-        }
-        if (index >= value.array_values.size()) {
+        auto* child = yyjson_mut_arr_get(value, index);
+        if (!child) {
             throw std::out_of_range("LJson::Json array index out of range");
         }
-        return value.array_values[index];
+        return child;
     }
 
-    static bool object_contains(const node_type& value, const std::string& key) {
-        if (value.type != kind::object) {
-            return false;
-        }
-        for (const auto& item : value.object_values) {
-            if (item.first == key) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    static std::size_t object_erase(node_type& value, const std::string& key) {
-        if (value.type != kind::object) {
-            return 0;
-        }
-        for (auto it = value.object_values.begin(); it != value.object_values.end(); ++it) {
-            if (it->first == key) {
-                value.object_values.erase(it);
-                return 1;
-            }
-        }
-        return 0;
+    static bool object_contains(yyjson_mut_val* value, const std::string& key) {
+        return yyjson_mut_is_obj(value) &&
+               yyjson_mut_obj_getn(value, key.data(), key.size()) != nullptr;
     }
 
     static std::vector<std::string> parse_pointer(const std::string& path) {
@@ -959,146 +698,331 @@ private:
         return static_cast<std::size_t>(std::stoull(text));
     }
 
-    node_type& pointer_value(const std::string& path, bool create) {
+    Json make_proxy(yyjson_mut_val* value,
+                    yyjson_mut_val* parent,
+                    relation_kind relation,
+                    std::string key = std::string(),
+                    std::size_t index = 0) const {
+        return Json(doc_, value, parent, relation, std::move(key), index, text_dirty_, true);
+    }
+
+    Json make_detached_copy(yyjson_mut_val* value) const {
+        Json out;
+        out.init_from_value_copy(value);
+        if (out.text_dirty_) {
+            *out.text_dirty_ = true;
+        }
+        return out;
+    }
+
+    Json pointer_value(const std::string& path, bool create) {
         auto parts = parse_pointer(path);
-        auto* current = &mutable_value();
+        auto* current = mutable_value();
+        auto* parent = parent_;
+        auto relation = relation_;
+        std::string key = key_;
+        std::size_t index = index_;
+
         for (const auto& part : parts) {
-            if (current->type == kind::array) {
+            if (yyjson_mut_is_arr(current)) {
+                parent = current;
+                relation = relation_kind::array;
                 if (part == "-") {
-                    current->array_values.push_back(node_type());
-                    current = &current->array_values.back();
+                    auto* item = require_value(yyjson_mut_null(doc_.get()));
+                    if (!yyjson_mut_arr_append(current, item)) {
+                        throw std::runtime_error("yyjson failed to append array value");
+                    }
+                    current = item;
+                    index = yyjson_mut_arr_size(parent) - 1;
                 } else {
-                    current = &array_child(*current, parse_index(part));
+                    index = parse_index(part);
+                    current = create ? array_child(current, index)
+                                     : array_child_const(current, index);
                 }
+                key.clear();
             } else if (create) {
-                current = &object_child(*current, part);
+                if (yyjson_mut_is_null(current)) {
+                    if (relation == relation_kind::root) {
+                        replace_current(require_value(yyjson_mut_obj(doc_.get())));
+                        current = value_;
+                    } else {
+                        auto* obj = require_value(yyjson_mut_obj(doc_.get()));
+                        Json holder = make_proxy(current, parent, relation, key, index);
+                        holder.replace_current(obj);
+                        current = holder.value_;
+                    }
+                }
+                if (!yyjson_mut_is_obj(current)) {
+                    throw std::domain_error("LJson::Json value is not an object");
+                }
+                parent = current;
+                relation = relation_kind::object;
+                key = part;
+                current = object_child(doc_.get(), current, part);
             } else {
-                current = const_cast<node_type*>(&object_child(*current, part));
+                parent = current;
+                relation = relation_kind::object;
+                key = part;
+                current = object_child_const(current, part);
             }
         }
-        return *current;
+
+        return make_proxy(current, parent, relation, key, index);
     }
 
-    const node_type& pointer_value(const std::string& path) const {
+    Json pointer_value(const std::string& path) const {
         auto parts = parse_pointer(path);
-        auto* current = &const_value();
+        auto* current = const_value();
         for (const auto& part : parts) {
-            if (current->type == kind::array) {
-                current = &array_child(*current, parse_index(part));
+            if (yyjson_mut_is_arr(current)) {
+                current = array_child_const(current, parse_index(part));
             } else {
-                current = &object_child(*current, part);
+                current = object_child_const(current, part);
             }
         }
-        return *current;
+        return make_detached_copy(current);
     }
 
-    static node_type* find_recursive_impl(node_type& value, const std::string& key) {
-        if (value.type == kind::object) {
-            for (auto& item : value.object_values) {
-                if (item.first == key) {
-                    return &item.second;
+    Json find_recursive_impl(yyjson_mut_val* value,
+                             yyjson_mut_val* parent,
+                             relation_kind relation,
+                             const std::string& key,
+                             std::size_t index,
+                             const std::string& target) {
+        if (yyjson_mut_is_obj(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* obj_key = nullptr;
+            yyjson_mut_val* obj_value = nullptr;
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                std::string current_key(yyjson_mut_get_str(obj_key),
+                                        yyjson_mut_get_len(obj_key));
+                if (current_key == target) {
+                    return make_proxy(obj_value, value, relation_kind::object, current_key, 0);
                 }
             }
-            for (auto& item : value.object_values) {
-                if (auto* found = find_recursive_impl(item.second, key)) {
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                std::string current_key(yyjson_mut_get_str(obj_key),
+                                        yyjson_mut_get_len(obj_key));
+                auto found = find_recursive_impl(obj_value, value, relation_kind::object,
+                                                 current_key, 0, target);
+                if (found.exists()) {
                     return found;
                 }
             }
-        } else if (value.type == kind::array) {
-            for (auto& item : value.array_values) {
-                if (auto* found = find_recursive_impl(item, key)) {
+        } else if (yyjson_mut_is_arr(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* item = nullptr;
+            yyjson_mut_arr_foreach(value, idx, max, item) {
+                auto found = find_recursive_impl(item, value, relation_kind::array,
+                                                 std::string(), idx, target);
+                if (found.exists()) {
                     return found;
                 }
             }
         }
-        return nullptr;
+        LTOOL_UNUSED(parent);
+        LTOOL_UNUSED(relation);
+        LTOOL_UNUSED(key);
+        LTOOL_UNUSED(index);
+        Json out;
+        out.valid_ = false;
+        return out;
     }
 
-    static const node_type* find_recursive_impl(const node_type& value,
-                                                const std::string& key) {
-        if (value.type == kind::object) {
-            for (const auto& item : value.object_values) {
-                if (item.first == key) {
-                    return &item.second;
+    Json find_recursive_impl(yyjson_mut_val* value, const std::string& target) const {
+        if (yyjson_mut_is_obj(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* obj_key = nullptr;
+            yyjson_mut_val* obj_value = nullptr;
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                std::string current_key(yyjson_mut_get_str(obj_key),
+                                        yyjson_mut_get_len(obj_key));
+                if (current_key == target) {
+                    return make_detached_copy(obj_value);
                 }
             }
-            for (const auto& item : value.object_values) {
-                if (auto* found = find_recursive_impl(item.second, key)) {
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                auto found = find_recursive_impl(obj_value, target);
+                if (found.exists()) {
                     return found;
                 }
             }
-        } else if (value.type == kind::array) {
-            for (const auto& item : value.array_values) {
-                if (auto* found = find_recursive_impl(item, key)) {
+        } else if (yyjson_mut_is_arr(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* item = nullptr;
+            yyjson_mut_arr_foreach(value, idx, max, item) {
+                auto found = find_recursive_impl(item, target);
+                if (found.exists()) {
                     return found;
                 }
             }
         }
-        return nullptr;
+        Json out;
+        out.valid_ = false;
+        return out;
     }
 
-    static void collect_recursive_impl(std::shared_ptr<node_type>& root,
-                                       std::shared_ptr<bool>& dirty,
-                                       node_type& value,
-                                       const std::string& key,
-                                       std::vector<Json>& out) {
-        if (value.type == kind::object) {
-            for (auto& item : value.object_values) {
-                if (item.first == key) {
-                    out.push_back(Json(root, &item.second, dirty, true));
+    void collect_recursive_impl(yyjson_mut_val* value,
+                                const std::string& target,
+                                std::vector<Json>& out) {
+        if (yyjson_mut_is_obj(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* obj_key = nullptr;
+            yyjson_mut_val* obj_value = nullptr;
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                std::string current_key(yyjson_mut_get_str(obj_key),
+                                        yyjson_mut_get_len(obj_key));
+                if (current_key == target) {
+                    out.push_back(make_proxy(obj_value, value, relation_kind::object,
+                                             current_key, 0));
                 }
             }
-            for (auto& item : value.object_values) {
-                collect_recursive_impl(root, dirty, item.second, key, out);
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                collect_recursive_impl(obj_value, target, out);
             }
-        } else if (value.type == kind::array) {
-            for (auto& item : value.array_values) {
-                collect_recursive_impl(root, dirty, item, key, out);
+        } else if (yyjson_mut_is_arr(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* item = nullptr;
+            yyjson_mut_arr_foreach(value, idx, max, item) {
+                collect_recursive_impl(item, target, out);
             }
         }
     }
 
-    static void collect_recursive_impl(const node_type& value,
-                                       const std::string& key,
-                                       std::vector<Json>& out) {
-        if (value.type == kind::object) {
-            for (const auto& item : value.object_values) {
-                if (item.first == key) {
-                    out.push_back(Json(item.second));
+    void collect_recursive_impl(yyjson_mut_val* value,
+                                const std::string& target,
+                                std::vector<Json>& out) const {
+        if (yyjson_mut_is_obj(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* obj_key = nullptr;
+            yyjson_mut_val* obj_value = nullptr;
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                std::string current_key(yyjson_mut_get_str(obj_key),
+                                        yyjson_mut_get_len(obj_key));
+                if (current_key == target) {
+                    out.push_back(make_detached_copy(obj_value));
                 }
             }
-            for (const auto& item : value.object_values) {
-                collect_recursive_impl(item.second, key, out);
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                collect_recursive_impl(obj_value, target, out);
             }
-        } else if (value.type == kind::array) {
-            for (const auto& item : value.array_values) {
-                collect_recursive_impl(item, key, out);
+        } else if (yyjson_mut_is_arr(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* item = nullptr;
+            yyjson_mut_arr_foreach(value, idx, max, item) {
+                collect_recursive_impl(item, target, out);
             }
         }
     }
 
-    explicit Json(const node_type& value)
-        : root_(std::make_shared<node_type>(value)),
-          node_(root_.get()),
-          text_dirty_(std::make_shared<bool>(true)) {}
+    static std::size_t erase_recursive_into(yyjson_mut_val* value, const std::string& key) {
+        std::size_t count = 0;
+        if (yyjson_mut_is_obj(value)) {
+            yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(value);
+            yyjson_mut_val* obj_key = nullptr;
+            while ((obj_key = yyjson_mut_obj_iter_next(&iter))) {
+                auto* obj_value = yyjson_mut_obj_iter_get_val(obj_key);
+                std::string current_key(yyjson_mut_get_str(obj_key),
+                                        yyjson_mut_get_len(obj_key));
+                if (current_key == key) {
+                    yyjson_mut_obj_iter_remove(&iter);
+                    ++count;
+                } else {
+                    count += erase_recursive_into(obj_value, key);
+                }
+            }
+        } else if (yyjson_mut_is_arr(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* item = nullptr;
+            yyjson_mut_arr_foreach(value, idx, max, item) {
+                count += erase_recursive_into(item, key);
+            }
+        }
+        return count;
+    }
+
+    template<class Visitor>
+    void for_each_recursive_impl(yyjson_mut_val* value, Visitor&& visitor) {
+        visitor(make_proxy(value, parent_, relation_, key_, index_));
+        if (yyjson_mut_is_obj(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* obj_key = nullptr;
+            yyjson_mut_val* obj_value = nullptr;
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                Json child = make_proxy(obj_value, value, relation_kind::object,
+                                        std::string(yyjson_mut_get_str(obj_key),
+                                                    yyjson_mut_get_len(obj_key)),
+                                        0);
+                child.for_each_recursive_impl(obj_value, visitor);
+            }
+        } else if (yyjson_mut_is_arr(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* item = nullptr;
+            yyjson_mut_arr_foreach(value, idx, max, item) {
+                Json child = make_proxy(item, value, relation_kind::array, std::string(), idx);
+                child.for_each_recursive_impl(item, visitor);
+            }
+        }
+    }
+
+    template<class Visitor>
+    void for_each_recursive_impl(yyjson_mut_val* value, Visitor&& visitor) const {
+        visitor(make_detached_copy(value));
+        if (yyjson_mut_is_obj(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* obj_key = nullptr;
+            yyjson_mut_val* obj_value = nullptr;
+            yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
+                for_each_recursive_impl(obj_value, visitor);
+            }
+        } else if (yyjson_mut_is_arr(value)) {
+            std::size_t idx = 0;
+            std::size_t max = 0;
+            yyjson_mut_val* item = nullptr;
+            yyjson_mut_arr_foreach(value, idx, max, item) {
+                for_each_recursive_impl(item, visitor);
+            }
+        }
+    }
 
 public:
     Json() = default;
 
     Json(const Json& other)
         : text_(other.str()) {
+        if (!other.valid_) {
+            valid_ = false;
+            return;
+        }
         if (other.proxy_) {
-            root_ = other.root_;
-            node_ = other.node_;
+            doc_ = other.doc_;
+            value_ = other.value_;
+            parent_ = other.parent_;
+            relation_ = other.relation_;
+            key_ = other.key_;
+            index_ = other.index_;
             text_dirty_ = other.text_dirty_;
             proxy_ = true;
             valid_ = other.valid_;
-        } else if (other.node_) {
-            root_ = std::make_shared<node_type>(other.const_value());
-            node_ = root_.get();
-            text_dirty_ = std::make_shared<bool>(false);
-            proxy_ = false;
-            valid_ = other.valid_;
+            return;
+        }
+        if (other.value_) {
+            init_from_value_copy(other.value_);
+            if (text_dirty_) {
+                *text_dirty_ = false;
+            }
         } else {
             valid_ = other.valid_;
         }
@@ -1106,12 +1030,17 @@ public:
 
     Json(Json&& other) noexcept
         : text_(std::move(other.text_)),
-          root_(std::move(other.root_)),
-          node_(other.node_),
+          doc_(std::move(other.doc_)),
+          value_(other.value_),
+          parent_(other.parent_),
+          relation_(other.relation_),
+          key_(std::move(other.key_)),
+          index_(other.index_),
           text_dirty_(std::move(other.text_dirty_)),
           proxy_(other.proxy_),
           valid_(other.valid_) {
-        other.node_ = nullptr;
+        other.value_ = nullptr;
+        other.parent_ = nullptr;
         other.proxy_ = false;
         other.valid_ = true;
     }
@@ -1121,19 +1050,30 @@ public:
             return *this;
         }
         if (proxy_) {
-            set_value(other.const_value());
+            set_value_from(other);
             return *this;
         }
         text_ = other.str();
-        if (other.node_) {
-            root_ = std::make_shared<node_type>(other.const_value());
-            node_ = root_.get();
-            text_dirty_ = std::make_shared<bool>(false);
+        if (!other.valid_) {
+            doc_.reset();
+            value_ = nullptr;
+            valid_ = false;
+            return *this;
+        }
+        if (other.value_) {
+            init_from_value_copy(other.value_);
+            if (text_dirty_) {
+                *text_dirty_ = false;
+            }
         } else {
-            root_.reset();
-            node_ = nullptr;
+            doc_.reset();
+            value_ = nullptr;
             text_dirty_.reset();
         }
+        parent_ = nullptr;
+        relation_ = relation_kind::root;
+        key_.clear();
+        index_ = 0;
         proxy_ = false;
         valid_ = other.valid_;
         return *this;
@@ -1144,16 +1084,21 @@ public:
             return *this;
         }
         if (proxy_) {
-            set_value(other.const_value());
+            set_value_from(other);
             return *this;
         }
         text_ = std::move(other.text_);
-        root_ = std::move(other.root_);
-        node_ = other.node_;
+        doc_ = std::move(other.doc_);
+        value_ = other.value_;
+        parent_ = other.parent_;
+        relation_ = other.relation_;
+        key_ = std::move(other.key_);
+        index_ = other.index_;
         text_dirty_ = std::move(other.text_dirty_);
         proxy_ = other.proxy_;
         valid_ = other.valid_;
-        other.node_ = nullptr;
+        other.value_ = nullptr;
+        other.parent_ = nullptr;
         other.proxy_ = false;
         other.valid_ = true;
         return *this;
@@ -1189,90 +1134,99 @@ public:
         : Json(value.dump()) {}
 #endif
 
-    Json(std::nullptr_t)
-        : Json(make_null()) {}
+    Json(std::nullptr_t) {
+        init_root([](yyjson_mut_doc* doc) { return yyjson_mut_null(doc); });
+    }
 
-    Json(bool value)
-        : Json(make_bool(value)) {}
+    Json(bool value) {
+        init_root([&](yyjson_mut_doc* doc) { return yyjson_mut_bool(doc, value); });
+    }
 
-    Json(int value)
-        : Json(make_number(value)) {}
+    Json(int value) {
+        init_root([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+    }
 
-    Json(unsigned int value)
-        : Json(make_number(value)) {}
+    Json(unsigned int value) {
+        init_root([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+    }
 
-    Json(long value)
-        : Json(make_number(value)) {}
+    Json(long value) {
+        init_root([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+    }
 
-    Json(unsigned long value)
-        : Json(make_number(value)) {}
+    Json(unsigned long value) {
+        init_root([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+    }
 
-    Json(long long value)
-        : Json(make_number(value)) {}
+    Json(long long value) {
+        init_root([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+    }
 
-    Json(unsigned long long value)
-        : Json(make_number(value)) {}
+    Json(unsigned long long value) {
+        init_root([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+    }
 
-    Json(double value)
-        : Json(make_number(value)) {}
+    Json(double value) {
+        init_root([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+    }
 
     Json& operator=(std::nullptr_t) {
-        set_value(make_null());
+        set_value([](yyjson_mut_doc* doc) { return yyjson_mut_null(doc); });
         return *this;
     }
 
     Json& operator=(bool value) {
-        set_value(make_bool(value));
+        set_value([&](yyjson_mut_doc* doc) { return yyjson_mut_bool(doc, value); });
         return *this;
     }
 
     Json& operator=(int value) {
-        set_value(make_number(value));
+        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
         return *this;
     }
 
     Json& operator=(unsigned int value) {
-        set_value(make_number(value));
+        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
         return *this;
     }
 
     Json& operator=(long value) {
-        set_value(make_number(value));
+        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
         return *this;
     }
 
     Json& operator=(unsigned long value) {
-        set_value(make_number(value));
+        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
         return *this;
     }
 
     Json& operator=(long long value) {
-        set_value(make_number(value));
+        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
         return *this;
     }
 
     Json& operator=(unsigned long long value) {
-        set_value(make_number(value));
+        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
         return *this;
     }
 
     Json& operator=(double value) {
-        set_value(make_number(value));
+        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
         return *this;
     }
 
     Json& operator=(const char* value) {
-        set_value(value ? make_string(value) : make_null());
+        set_value([&](yyjson_mut_doc* doc) { return make_string(doc, value); });
         return *this;
     }
 
     Json& operator=(const std::string& value) {
-        set_value(make_string(value));
+        set_value([&](yyjson_mut_doc* doc) { return make_string(doc, value); });
         return *this;
     }
 
     Json& operator=(std::string&& value) {
-        set_value(make_string(std::move(value)));
+        set_value([&](yyjson_mut_doc* doc) { return make_string(doc, value); });
         return *this;
     }
 
@@ -1289,19 +1243,21 @@ public:
         : Json(simdjson::to_string(value.root())) {}
 #endif
 
-#if LJSON_HAS_YYJSON
-    Json(yyjson_doc* doc)
-        : Json(detail::yyjson_to_string(doc)) {}
+    Json(yyjson_doc* doc) {
+        init_from_doc_copy(doc);
+    }
 
-    Json(yyjson_val* value)
-        : Json(detail::yyjson_to_string(value)) {}
+    Json(yyjson_val* value) {
+        init_from_value_copy(value);
+    }
 
-    Json(yyjson_mut_doc* doc)
-        : Json(detail::yyjson_to_string(doc)) {}
+    Json(yyjson_mut_doc* doc) {
+        init_from_mut_doc_copy(doc);
+    }
 
-    Json(yyjson_mut_val* value)
-        : Json(detail::yyjson_to_string(value)) {}
-#endif
+    Json(yyjson_mut_val* value) {
+        init_from_value_copy(value);
+    }
 
     const std::string& str() const noexcept {
         try {
@@ -1344,19 +1300,25 @@ public:
     }
 
     static Json object() {
-        return Json(make_object());
+        Json out;
+        out.init_root([](yyjson_mut_doc* doc) { return yyjson_mut_obj(doc); });
+        return out;
     }
 
     static Json array() {
-        return Json(make_array());
+        Json out;
+        out.init_root([](yyjson_mut_doc* doc) { return yyjson_mut_arr(doc); });
+        return out;
     }
 
     static Json parse(JsonView text) {
-        return Json(parse_node(text));
+        Json out;
+        out.parse_text_now(text);
+        return out;
     }
 
     std::string dump(int indent = -1) const {
-        return dump_node_to_string(const_value(), indent);
+        return write_current(indent);
     }
 
 #if LJSON_HAS_NLOHMANN_JSON
@@ -1370,12 +1332,13 @@ public:
 #endif
 
     Json operator[](const std::string& key) {
-        auto& child = object_child(mutable_value(), key);
-        return Json(root_, &child, text_dirty_, true);
+        auto* object = ensure_object_value();
+        auto* child = object_child(doc_.get(), object, key);
+        return make_proxy(child, object, relation_kind::object, key, 0);
     }
 
     Json operator[](const std::string& key) const {
-        return Json(object_child(const_value(), key));
+        return make_detached_copy(object_child_const(const_value(), key));
     }
 
     Json operator[](const char* key) {
@@ -1387,59 +1350,58 @@ public:
     }
 
     Json operator[](std::size_t index) {
-        auto& child = array_child(mutable_value(), index);
-        return Json(root_, &child, text_dirty_, true);
+        auto* array = ensure_array_value();
+        auto* child = array_child(array, index);
+        return make_proxy(child, array, relation_kind::array, std::string(), index);
     }
 
     Json operator[](std::size_t index) const {
-        return Json(array_child(const_value(), index));
+        return make_detached_copy(array_child_const(const_value(), index));
     }
 
     Json at(const std::string& key) {
-        auto& child = object_child(mutable_value(), key);
-        return Json(root_, &child, text_dirty_, true);
+        return (*this)[key];
     }
 
     Json at(const std::string& key) const {
-        return Json(object_child(const_value(), key));
+        return (*this)[key];
     }
 
     Json at(std::size_t index) {
-        auto& child = array_child(mutable_value(), index);
-        return Json(root_, &child, text_dirty_, true);
+        return (*this)[index];
     }
 
     Json at(std::size_t index) const {
-        return Json(array_child(const_value(), index));
+        return (*this)[index];
     }
 
     Json at_pointer(const std::string& path) {
-        auto& child = pointer_value(path, false);
-        return Json(root_, &child, text_dirty_, true);
+        return pointer_value(path, false);
     }
 
     Json at_pointer(const std::string& path) const {
-        return Json(pointer_value(path));
+        return pointer_value(path);
     }
 
     Json pointer(const std::string& path) {
-        auto& child = pointer_value(path, true);
-        return Json(root_, &child, text_dirty_, true);
+        return pointer_value(path, true);
     }
 
     Json pointer(const std::string& path) const {
-        return Json(pointer_value(path));
+        return pointer_value(path);
     }
 
     void set_pointer(const std::string& path, Json value) {
-        pointer_value(path, true) = value.const_value();
+        auto target = pointer_value(path, true);
+        target.set_value_from(value);
     }
 
     template<class T,
              typename std::enable_if<!std::is_same<detail::remove_cvref_t<T>, Json>::value,
                                      int>::type = 0>
     void set_pointer(const std::string& path, T&& value) {
-        pointer_value(path, true) = make_json_value(std::forward<T>(value));
+        auto target = pointer_value(path, true);
+        target.replace_current(require_value(target.make_json_value(std::forward<T>(value))));
     }
 
     bool contains(const std::string& key) const {
@@ -1476,31 +1438,41 @@ public:
     }
 
     std::size_t erase(const std::string& key) {
-        return object_erase(mutable_value(), key);
+        auto* value = mutable_value();
+        if (!yyjson_mut_is_obj(value)) {
+            return 0;
+        }
+        auto* removed = yyjson_mut_obj_remove_keyn(value, key.data(), key.size());
+        if (removed) {
+            mark_dirty();
+            return 1;
+        }
+        return 0;
     }
 
     void erase(std::size_t index) {
-        auto& value = mutable_value();
-        if (value.type != kind::array || index >= value.array_values.size()) {
+        auto* value = mutable_value();
+        if (!yyjson_mut_is_arr(value) || index >= yyjson_mut_arr_size(value)) {
             throw std::out_of_range("LJson::Json array index out of range");
         }
-        value.array_values.erase(value.array_values.begin() + static_cast<std::ptrdiff_t>(index));
+        yyjson_mut_arr_remove(value, index);
+        mark_dirty();
     }
 
     bool erase_pointer(const std::string& path) {
         auto parts = parse_pointer(path);
         if (parts.empty()) {
-            set_value(make_null());
+            *this = nullptr;
             return true;
         }
 
-        auto* current = &mutable_value();
+        auto* current = mutable_value();
         for (std::size_t i = 0; i + 1 < parts.size(); ++i) {
             try {
-                if (current->type == kind::array) {
-                    current = &array_child(*current, parse_index(parts[i]));
+                if (yyjson_mut_is_arr(current)) {
+                    current = array_child_const(current, parse_index(parts[i]));
                 } else {
-                    current = &object_child(*current, parts[i]);
+                    current = object_child_const(current, parts[i]);
                 }
             } catch (...) {
                 return false;
@@ -1508,156 +1480,169 @@ public:
         }
 
         const auto& leaf = parts.back();
-        if (current->type == kind::array) {
+        if (yyjson_mut_is_arr(current)) {
             if (!is_array_index(leaf)) {
                 return false;
             }
             const auto index = parse_index(leaf);
-            if (index >= current->array_values.size()) {
+            if (index >= yyjson_mut_arr_size(current)) {
                 return false;
             }
-            current->array_values.erase(current->array_values.begin() +
-                                        static_cast<std::ptrdiff_t>(index));
+            yyjson_mut_arr_remove(current, index);
+            mark_dirty();
             return true;
         }
-        if (current->type == kind::object) {
-            return object_erase(*current, leaf) != 0;
+        if (yyjson_mut_is_obj(current)) {
+            auto* removed = yyjson_mut_obj_remove_keyn(current, leaf.data(), leaf.size());
+            if (removed) {
+                mark_dirty();
+                return true;
+            }
         }
         return false;
     }
 
     void clear() {
-        auto& value = mutable_value();
-        switch (value.type) {
-        case kind::array:
-            value.array_values.clear();
-            break;
-        case kind::object:
-            value.object_values.clear();
-            break;
-        case kind::string:
-        case kind::number:
-            value.text.clear();
-            break;
-        case kind::boolean:
-            value.bool_value = false;
-            break;
-        case kind::null_value:
-            break;
+        auto* value = mutable_value();
+        if (yyjson_mut_is_arr(value)) {
+            yyjson_mut_arr_clear(value);
+        } else if (yyjson_mut_is_obj(value)) {
+            yyjson_mut_obj_clear(value);
+        } else if (yyjson_mut_is_str(value)) {
+            replace_current(require_value(yyjson_mut_strncpy(doc_.get(), "", 0)));
+        } else if (yyjson_mut_is_bool(value)) {
+            replace_current(require_value(yyjson_mut_false(doc_.get())));
+        } else if (yyjson_mut_is_num(value)) {
+            replace_current(require_value(yyjson_mut_sint(doc_.get(), 0)));
         }
+        mark_dirty();
     }
 
     void push_back(Json value) {
-        auto& target = mutable_value();
-        if (target.type == kind::null_value) {
-            target = make_array();
+        auto* target = ensure_array_value();
+        auto* copied = require_value(yyjson_mut_val_mut_copy(doc_.get(), value.const_value()));
+        if (!yyjson_mut_arr_append(target, copied)) {
+            throw std::runtime_error("yyjson failed to append array value");
         }
-        if (target.type != kind::array) {
-            throw std::domain_error("LJson::Json value is not an array");
-        }
-        target.array_values.push_back(value.const_value());
+        mark_dirty();
     }
 
     template<class T,
              typename std::enable_if<!std::is_same<detail::remove_cvref_t<T>, Json>::value,
                                      int>::type = 0>
     void push_back(T&& value) {
-        auto& target = mutable_value();
-        if (target.type == kind::null_value) {
-            target = make_array();
+        auto* target = ensure_array_value();
+        auto* item = require_value(make_json_value(std::forward<T>(value)));
+        if (!yyjson_mut_arr_append(target, item)) {
+            throw std::runtime_error("yyjson failed to append array value");
         }
-        if (target.type != kind::array) {
-            throw std::domain_error("LJson::Json value is not an array");
-        }
-        target.array_values.push_back(make_json_value(std::forward<T>(value)));
+        mark_dirty();
     }
 
     template<class... Args>
     Json emplace_back(Args&&... args) {
         push_back(Json(std::forward<Args>(args)...));
-        auto& value = mutable_value();
-        return Json(root_, &value.array_values.back(), text_dirty_, true);
+        auto* target = ensure_array_value();
+        const auto index = yyjson_mut_arr_size(target) - 1;
+        return make_proxy(yyjson_mut_arr_get(target, index), target,
+                          relation_kind::array, std::string(), index);
     }
 
     void update(Json other) {
-        auto& target = mutable_value();
-        const auto& src = other.const_value();
-        if (target.type == kind::null_value) {
-            target = make_object();
-        }
-        if (target.type != kind::object || src.type != kind::object) {
+        auto* target = ensure_object_value();
+        auto* source = other.const_value();
+        if (!yyjson_mut_is_obj(source)) {
             throw std::domain_error("LJson::Json update requires objects");
         }
-        for (const auto& item : src.object_values) {
-            object_child(target, item.first) = item.second;
+
+        std::size_t idx = 0;
+        std::size_t max = 0;
+        yyjson_mut_val* key = nullptr;
+        yyjson_mut_val* value = nullptr;
+        yyjson_mut_obj_foreach(source, idx, max, key, value) {
+            std::string key_text(yyjson_mut_get_str(key), yyjson_mut_get_len(key));
+            auto* copied_key = require_value(yyjson_mut_strncpy(doc_.get(),
+                                                                key_text.data(),
+                                                                key_text.size()));
+            auto* copied_value = require_value(yyjson_mut_val_mut_copy(doc_.get(), value));
+            if (!yyjson_mut_obj_replace(target, copied_key, copied_value)) {
+                if (!yyjson_mut_obj_add(target, copied_key, copied_value)) {
+                    throw std::runtime_error("yyjson failed to update object");
+                }
+            }
         }
+        mark_dirty();
     }
 
     std::size_t json_size() const {
-        const auto& value = const_value();
-        if (value.type == kind::array) {
-            return value.array_values.size();
+        auto* value = const_value();
+        if (yyjson_mut_is_arr(value)) {
+            return yyjson_mut_arr_size(value);
         }
-        if (value.type == kind::object) {
-            return value.object_values.size();
+        if (yyjson_mut_is_obj(value)) {
+            return yyjson_mut_obj_size(value);
         }
-        if (value.type == kind::string) {
-            return value.text.size();
+        if (yyjson_mut_is_str(value)) {
+            return yyjson_mut_get_len(value);
         }
         return 0;
     }
 
     bool is_null() const {
-        return const_value().type == kind::null_value;
+        return yyjson_mut_is_null(const_value());
     }
 
     bool is_boolean() const {
-        return const_value().type == kind::boolean;
+        return yyjson_mut_is_bool(const_value());
     }
 
     bool is_number() const {
-        return const_value().type == kind::number;
+        return yyjson_mut_is_num(const_value());
     }
 
     bool is_string() const {
-        return const_value().type == kind::string;
+        return yyjson_mut_is_str(const_value());
     }
 
     bool is_array() const {
-        return const_value().type == kind::array;
+        return yyjson_mut_is_arr(const_value());
     }
 
     bool is_object() const {
-        return const_value().type == kind::object;
+        return yyjson_mut_is_obj(const_value());
     }
 
     template<class T>
     T get_as() const {
-        const auto& value = const_value();
+        auto* value = const_value();
         if constexpr (std::is_same<T, std::string>::value) {
-            if (value.type != kind::string) {
+            if (!yyjson_mut_is_str(value)) {
                 throw std::domain_error("LJson::Json value is not a string");
             }
-            return value.text;
+            return std::string(yyjson_mut_get_str(value), yyjson_mut_get_len(value));
         } else if constexpr (std::is_same<T, bool>::value) {
-            if (value.type != kind::boolean) {
+            if (!yyjson_mut_is_bool(value)) {
                 throw std::domain_error("LJson::Json value is not a boolean");
             }
-            return value.bool_value;
+            return yyjson_mut_get_bool(value);
         } else if constexpr (std::is_integral<T>::value) {
-            if (value.type != kind::number) {
+            if (!yyjson_mut_is_num(value)) {
                 throw std::domain_error("LJson::Json value is not a number");
             }
             if constexpr (std::is_unsigned<T>::value) {
-                return static_cast<T>(std::stoull(value.text));
+                return static_cast<T>(yyjson_mut_is_uint(value)
+                                          ? yyjson_mut_get_uint(value)
+                                          : static_cast<uint64_t>(yyjson_mut_get_num(value)));
             } else {
-                return static_cast<T>(std::stoll(value.text));
+                return static_cast<T>(yyjson_mut_is_int(value)
+                                          ? yyjson_mut_get_sint(value)
+                                          : static_cast<int64_t>(yyjson_mut_get_num(value)));
             }
         } else if constexpr (std::is_floating_point<T>::value) {
-            if (value.type != kind::number) {
+            if (!yyjson_mut_is_num(value)) {
                 throw std::domain_error("LJson::Json value is not a number");
             }
-            return static_cast<T>(std::stod(value.text));
+            return static_cast<T>(yyjson_mut_get_num(value));
         } else {
             static_assert(detail::dependent_false<T>::value,
                           "LJson::Json::get_as<T> supports string, bool, and numeric types");
@@ -1689,28 +1674,16 @@ public:
     }
 
     Json find_recursive(const std::string& key) {
-        auto& root = mutable_value();
-        if (auto* found = find_recursive_impl(root, key)) {
-            return Json(root_, found, text_dirty_, true);
-        }
-        Json out;
-        out.valid_ = false;
-        return out;
+        return find_recursive_impl(mutable_value(), parent_, relation_, key_, index_, key);
     }
 
     Json find_recursive(const std::string& key) const {
-        if (auto* found = find_recursive_impl(const_value(), key)) {
-            return Json(*found);
-        }
-        Json out;
-        out.valid_ = false;
-        return out;
+        return find_recursive_impl(const_value(), key);
     }
 
     std::vector<Json> find_all_recursive(const std::string& key) {
-        auto& root = mutable_value();
         std::vector<Json> out;
-        collect_recursive_impl(root_, text_dirty_, root, key, out);
+        collect_recursive_impl(mutable_value(), key, out);
         return out;
     }
 
@@ -1721,14 +1694,16 @@ public:
     }
 
     std::size_t erase_recursive(const std::string& key) {
-        auto& root = mutable_value();
-        return erase_recursive_into(root, key);
+        auto count = erase_recursive_into(mutable_value(), key);
+        if (count != 0) {
+            mark_dirty();
+        }
+        return count;
     }
 
     template<class Visitor>
     void for_each_recursive(Visitor&& visitor) {
-        auto& root = mutable_value();
-        for_each_recursive_impl(root_, text_dirty_, root, std::forward<Visitor>(visitor));
+        for_each_recursive_impl(mutable_value(), std::forward<Visitor>(visitor));
     }
 
     template<class Visitor>
@@ -1737,7 +1712,7 @@ public:
     }
 
     friend bool operator==(const Json& lhs, const Json& rhs) {
-        return equals(lhs.const_value(), rhs.const_value());
+        return yyjson_mut_equals(lhs.const_value(), rhs.const_value());
     }
 
     friend bool operator!=(const Json& lhs, const Json& rhs) {
@@ -1824,106 +1799,6 @@ public:
         return !(rhs == lhs);
     }
 
-private:
-    static bool equals(const node_type& lhs, const node_type& rhs) {
-        if (lhs.type != rhs.type) {
-            return false;
-        }
-        switch (lhs.type) {
-        case kind::null_value:
-            return true;
-        case kind::boolean:
-            return lhs.bool_value == rhs.bool_value;
-        case kind::number:
-            return std::stod(lhs.text) == std::stod(rhs.text);
-        case kind::string:
-            return lhs.text == rhs.text;
-        case kind::array:
-            if (lhs.array_values.size() != rhs.array_values.size()) {
-                return false;
-            }
-            for (std::size_t i = 0; i < lhs.array_values.size(); ++i) {
-                if (!equals(lhs.array_values[i], rhs.array_values[i])) {
-                    return false;
-                }
-            }
-            return true;
-        case kind::object:
-            if (lhs.object_values.size() != rhs.object_values.size()) {
-                return false;
-            }
-            for (const auto& left : lhs.object_values) {
-                bool found = false;
-                for (const auto& right : rhs.object_values) {
-                    if (left.first == right.first) {
-                        if (!equals(left.second, right.second)) {
-                            return false;
-                        }
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        return false;
-    }
-
-    static std::size_t erase_recursive_into(node_type& value, const std::string& key) {
-        std::size_t count = 0;
-        if (value.type == kind::object) {
-            for (auto it = value.object_values.begin(); it != value.object_values.end();) {
-                if (it->first == key) {
-                    it = value.object_values.erase(it);
-                    ++count;
-                } else {
-                    count += erase_recursive_into(it->second, key);
-                    ++it;
-                }
-            }
-        } else if (value.type == kind::array) {
-            for (auto& item : value.array_values) {
-                count += erase_recursive_into(item, key);
-            }
-        }
-        return count;
-    }
-
-    template<class Visitor>
-    static void for_each_recursive_impl(std::shared_ptr<node_type>& root,
-                                        std::shared_ptr<bool>& dirty,
-                                        node_type& value,
-                                        Visitor&& visitor) {
-        visitor(Json(root, &value, dirty, true));
-        if (value.type == kind::object) {
-            for (auto& item : value.object_values) {
-                for_each_recursive_impl(root, dirty, item.second, visitor);
-            }
-        } else if (value.type == kind::array) {
-            for (auto& item : value.array_values) {
-                for_each_recursive_impl(root, dirty, item, visitor);
-            }
-        }
-    }
-
-    template<class Visitor>
-    static void for_each_recursive_impl(const node_type& value, Visitor&& visitor) {
-        visitor(Json(value));
-        if (value.type == kind::object) {
-            for (const auto& item : value.object_values) {
-                for_each_recursive_impl(item.second, visitor);
-            }
-        } else if (value.type == kind::array) {
-            for (const auto& item : value.array_values) {
-                for_each_recursive_impl(item, visitor);
-            }
-        }
-    }
-
-public:
 #if LJSON_HAS_RFL_JSON
     template<class T>
     static Json from(const T& value) {
