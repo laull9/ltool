@@ -6,7 +6,7 @@
 #ifndef LTOOL_LJSON_INCLUDE
 #define LTOOL_LJSON_INCLUDE
 
-#include "LConfig.hpp"
+#include "detail/LConfig.hpp"
 
 #include <cstddef>
 #include <cstdlib>
@@ -45,7 +45,7 @@
 
 #if LJSON_HAS_YYJSON
 #if LJSON_HAS_RFL_YYJSON
-#include "rfl/thirdparty/yyjson_impl.hpp"
+#include "pkgs/rfl/thirdparty/yyjson_impl.hpp"
 #else
 #include <yyjson.h>
 #endif
@@ -53,7 +53,7 @@
 
 #if LJSON_HAS_RFL_JSON
 #if LJSON_HAS_BUNDLED_RFL_JSON
-#include "rfl/json.hpp"
+#include "pkgs/rfl/json.hpp"
 #else
 #include <rfl/json.hpp>
 #endif
@@ -380,9 +380,9 @@ inline const char* backend_name(Backend value) noexcept {
     case Backend::simdjson:
         return "simdjson";
     case Backend::yyjson:
-        return LJSON_HAS_RFL_YYJSON ? "rfl/thirdparty/yyjson" : "yyjson";
+        return LJSON_HAS_RFL_YYJSON ? "pkgs/rfl/thirdparty/yyjson" : "yyjson";
     case Backend::rfl_json:
-        return "rfl/json";
+        return "pkgs/rfl/json";
     case Backend::none:
     default:
         return "none";

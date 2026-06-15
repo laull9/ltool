@@ -1,7 +1,7 @@
 #ifndef RFL_INTERNAL_STRINGS_STRINGS_IMPL_HPP_
 #define RFL_INTERNAL_STRINGS_STRINGS_IMPL_HPP_
 
-#include "rfl/internal/strings/strings.hpp"
+#include "strings.hpp"
 
 #include <string>
 #include <vector>

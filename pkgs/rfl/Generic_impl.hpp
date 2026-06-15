@@ -27,7 +27,7 @@ SOFTWARE.
 
 */
 
-#include "rfl/Generic.hpp"
+#include "Generic.hpp"
 
 namespace rfl {
 

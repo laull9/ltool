@@ -3,7 +3,7 @@
  * @brief BS_thread_pool 的 ltool 风格薄封装，纯头文件、轻量易用。
  *
  * LThreadPool 的核心定位：
- * - 直接复用仓库内置 BS_thread_pool.hpp，不额外引入第三方构建依赖。
+ * - 直接复用仓库内置 pkgs/BS_thread_pool.hpp，不额外引入第三方构建依赖。
  * - 提供 submit/post/parallel_for/wait 等更短的常用入口。
  * - 保留 native() 访问底层线程池，复杂场景仍可使用 BS_thread_pool 原生 API。
  *
@@ -19,13 +19,13 @@
 #ifndef LTOOL_LTHREAD_POOL_INCLUDE
 #define LTOOL_LTHREAD_POOL_INCLUDE
 
-#include "LConfig.hpp"
+#include "detail/LConfig.hpp"
 
 #if !LTOOL_HAS_THREAD_POOL
 #error "LThreadPool requires C++17 or later"
 #endif
 
-#include "BS_thread_pool.hpp"
+#include "pkgs/BS_thread_pool.hpp"
 
 #include <chrono>
 #include <cstddef>

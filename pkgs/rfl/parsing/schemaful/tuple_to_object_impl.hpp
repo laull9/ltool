@@ -1,7 +1,7 @@
 #ifndef RFL_PARSING_SCHEMAFUL_TUPLE_TO_OBJECT_IMPL_HPP_
 #define RFL_PARSING_SCHEMAFUL_TUPLE_TO_OBJECT_IMPL_HPP_
 
-#include "rfl/parsing/schemaful/tuple_to_object.hpp"
+#include "tuple_to_object.hpp"
 
 namespace rfl::parsing::schemaful {
 

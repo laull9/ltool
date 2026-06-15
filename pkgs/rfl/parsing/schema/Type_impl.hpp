@@ -27,7 +27,7 @@ SOFTWARE.
 
 */
 
-#include "rfl/parsing/schema/Type.hpp"
+#include "Type.hpp"
 
 namespace rfl::parsing::schema {
 

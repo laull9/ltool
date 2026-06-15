@@ -27,10 +27,10 @@ SOFTWARE.
 
 */
 
-#include "rfl/json/to_schema.hpp"
+#include "to_schema.hpp"
 
-#include "rfl/json/schema/Type.hpp"
-#include "rfl/json/write.hpp"
+#include "schema/Type.hpp"
+#include "write.hpp"
 
 namespace rfl::json {
 

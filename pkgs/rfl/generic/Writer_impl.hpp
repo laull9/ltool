@@ -27,7 +27,7 @@ SOFTWARE.
 
 */
 
-#include "rfl/generic/Writer.hpp"
+#include "Writer.hpp"
 
 namespace rfl::generic {
 inline Writer::OutputArrayType Writer::array_as_root(

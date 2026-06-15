@@ -21,7 +21,7 @@
 #ifndef LTOOL_LENV_INCLUDE
 #define LTOOL_LENV_INCLUDE
 
-#include "LConfig.hpp"
+#include "detail/LConfig.hpp"
 
 #include <cctype>
 #include <cstdlib>

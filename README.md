@@ -8,7 +8,7 @@
 - 中文文本友好：`LString` 内部按 UTF-8 字节保存，边界 API 支持 GBK/GB2312、UTF-16、UTF-32、Latin1 等编码转换。
 - 常用能力打包：字符串处理、文件读写、目录遍历、路径辅助、Base64、MD5、枚举名转换和线程安全包装。
 - 尽量贴近标准库：类型和接口围绕 `std::string`、`std::filesystem::path`、`std::mutex` / `std::shared_mutex` 展开。
-- 外部依赖随仓库提供：`fmt/`、`magic_enum/`、`BS_thread_pool.hpp` 已放在仓库内。
+- 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`。
 
 ## 快速开始
 
@@ -76,20 +76,20 @@ cmake --install build/ltool
 
 ### `LTool.hpp`
 
-`LTool.hpp` 是常用组件总入口，会引入 `LConfig.hpp`、`LString.hpp`、`LLog.hpp`、
-`LJson.hpp`、`LFile.hpp`、`Locked.hpp` 和 `BS_thread_pool.hpp`。其中 `LFile.hpp` 只在检测到
-C++17 `std::filesystem` 时引入，`BS_thread_pool.hpp` 只在 C++17 起引入，
+`LTool.hpp` 是常用组件总入口，会引入 `detail/LConfig.hpp`、`LString.hpp`、`LLog.hpp`、
+`LJson.hpp`、`LFile.hpp`、`Locked.hpp` 和 `LThreadPool.hpp`。其中 `LFile.hpp` 只在检测到
+C++17 `std::filesystem` 时引入，`LThreadPool.hpp` 只在 C++17 起引入，
 `Locked.hpp` 只在检测到 C++20 concepts 时引入。
 
-### `LConfig.hpp`
+### `detail/LConfig.hpp`
 
-`LConfig.hpp` 提供 ltool 版本、C++ 标准、平台、编译器和常用特性检测宏，例如
+`detail/LConfig.hpp` 提供 ltool 版本、C++ 标准、平台、编译器和常用特性检测宏，例如
 `LTOOL_VERSION_STRING`、`LTOOL_HAS_CPP20`、`LTOOL_HAS_FILESYSTEM`、
 `LTOOL_PLATFORM_WINDOWS`，并提供 `LTool::version_string()`。
 
-### `LFmt.hpp`
+### `detail/LFmt.hpp`
 
-`LFmt.hpp` 是 ltool 内部统一的 fmt 引入入口。`LString.hpp` 和 `LLog.hpp` 都通过
+`detail/LFmt.hpp` 是 ltool 内部统一的 fmt 引入入口。`LString.hpp` 和 `LLog.hpp` 都通过
 它处理内置 fmt、外部 fmt 和 header-only 配置，避免每个头文件重复维护 fmt 宏。
 
 ### `LLog.hpp`
@@ -128,9 +128,9 @@ void log_example() {
 - nlohmann/json：检测 `<nlohmann/json.hpp>` 或 `<nlohmann.hpp>`，宏 `LJSON_HAS_NLOHMANN_JSON`。
 - JsonCpp/cppjson：检测 `<json/json.h>`，宏 `LJSON_HAS_JSONCPP` / `LJSON_HAS_CPPJSON`。
 - simdjson：C++17 起检测 `<simdjson.h>`，宏 `LJSON_HAS_SIMDJSON`。
-- yyjson：优先使用 ltool 内置的 `rfl/thirdparty/yyjson.h`；如果没有，则检测
+- yyjson：优先使用 ltool 内置的 `pkgs/rfl/thirdparty/yyjson.h`；如果没有，则检测
   `<yyjson.h>`，宏 `LJSON_HAS_YYJSON`。
-- rfl/json：默认开启；处于 C++20 且能找到 ltool 内置的 `"rfl/json.hpp"` 或外部
+- rfl/json：默认开启；处于 C++20 且能找到 ltool 内置的 `"pkgs/rfl/json.hpp"` 或外部
   `<rfl/json.hpp>` 时，宏 `LJSON_HAS_STATIC_REFLECTION` 会变为 1。
 
 示例：
@@ -291,9 +291,10 @@ void locked_example() {
 
 仓库包含以下第三方头文件，默认直接从本仓库引用：
 
-- `fmt/`：`LString` 格式化能力依赖它，默认以 header-only 方式使用。
-- `magic_enum/`：C++17 起用于枚举名和枚举值互转。
-- `BS_thread_pool.hpp`：线程池头文件，当前 README 只列出依赖，具体接口请参考该头文件本身。
+- `pkgs/fmt/`：`LString` 格式化能力依赖它，默认以 header-only 方式使用。
+- `pkgs/magic_enum/`：C++17 起用于枚举名和枚举值互转。
+- `pkgs/BS_thread_pool.hpp`：线程池头文件，当前 README 只列出依赖，具体接口请参考该头文件本身。
+- `pkgs/rfl.hpp`、`pkgs/rfl/`：reflect-cpp 头文件，供 `LJson` 的 rfl/json 后端使用。
 - `nlohmann/json`、JsonCpp、simdjson、yyjson、`rfl/json`：`LJson` 可选适配；
   检测到头文件和启用宏时才编译对应代码。
 
@@ -325,16 +326,19 @@ GBK/GB2312 转换在 Windows 上使用系统代码页 API；在 Unix-like 平台
 ```text
 .
 ├── LTool.hpp
-├── LConfig.hpp
-├── LFmt.hpp
+├── detail/LConfig.hpp
+├── detail/LFmt.hpp
 ├── LLog.hpp
 ├── LJson.hpp
 ├── LString.hpp
 ├── LFile.hpp
 ├── Locked.hpp
-├── BS_thread_pool.hpp
-├── fmt/
-└── magic_enum/
+└── pkgs/
+    ├── BS_thread_pool.hpp
+    ├── fmt/
+    ├── magic_enum/
+    ├── rfl.hpp
+    └── rfl/
 ```
 
 ## 建议用法

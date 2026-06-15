@@ -1,5 +1,5 @@
 /**
- * @file LFmt.hpp
+ * @file detail/LFmt.hpp
  * @brief ltool 内部统一的 fmt 引入入口。
  */
 
@@ -17,9 +17,9 @@
 #define FMT_HEADER_ONLY 1
 #define LTOOL_FMT_HEADER_ONLY_ADD 1
 #endif // !FMT_HEADER_ONLY
-#include "fmt/format.h"
-#include "fmt/ranges.h"
-#include "fmt/std.h"
+#include "../pkgs/fmt/format.h"
+#include "../pkgs/fmt/ranges.h"
+#include "../pkgs/fmt/std.h"
 #ifdef LTOOL_FMT_HEADER_ONLY_ADD
 #undef FMT_HEADER_ONLY
 #endif // LTOOL_FMT_HEADER_ONLY_ADD

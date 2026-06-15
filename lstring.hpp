@@ -51,7 +51,7 @@
 #ifndef LSTRING_INCLUDE
 #define LSTRING_INCLUDE
 
-#include "LConfig.hpp"
+#include "detail/LConfig.hpp"
 
 #include <algorithm>
 #include <array>
@@ -72,7 +72,7 @@
 #include <utility>
 #include <vector>
 
-#include "LFmt.hpp"
+#include "detail/LFmt.hpp"
 
 #ifndef LSTRING_USE_EXTERNAL_FMT
 #define LSTRING_USE_EXTERNAL_FMT LTOOL_USE_EXTERNAL_FMT
@@ -108,7 +108,7 @@
 #endif // !LSTRING_USE_MAGIC_ENUM
 
 #if LTOOL_HAS_MAGIC_ENUM
-#include "magic_enum/magic_enum.hpp"
+#include "pkgs/magic_enum/magic_enum.hpp"
 #endif // LTOOL_HAS_MAGIC_ENUM
 #define LSTRING_HAS_MAGIC_ENUM LTOOL_HAS_MAGIC_ENUM
 

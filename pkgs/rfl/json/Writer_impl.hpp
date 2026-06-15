@@ -27,7 +27,7 @@ SOFTWARE.
 
 */
 
-#include "rfl/json/Writer.hpp"
+#include "Writer.hpp"
 
 namespace rfl::json {
 

@@ -6,8 +6,8 @@
 #ifndef LTOOL_INCLUDE
 #define LTOOL_INCLUDE
 
-#include "LConfig.hpp"
-#include "LFmt.hpp"
+#include "detail/LConfig.hpp"
+#include "detail/LFmt.hpp"
 #include "LString.hpp"
 #include "LLog.hpp"
 #include "LJson.hpp"

@@ -23,7 +23,7 @@
 #ifndef LTOOL_LTIMER_INCLUDE
 #define LTOOL_LTIMER_INCLUDE
 
-#include "LConfig.hpp"
+#include "detail/LConfig.hpp"
 
 #include <chrono>
 #include <functional>

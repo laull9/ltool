@@ -1,5 +1,5 @@
 /**
- * @file LConfig.hpp
+ * @file detail/LConfig.hpp
  * @brief ltool 的版本、平台和语言特性配置入口。
  */
 
@@ -113,7 +113,7 @@
 #define LTOOL_HAS_STD_FORMAT 0
 #endif
 
-#if LTOOL_USE_MAGIC_ENUM && LTOOL_HAS_CPP17 && LTOOL_HAS_INCLUDE("magic_enum/magic_enum.hpp")
+#if LTOOL_USE_MAGIC_ENUM && LTOOL_HAS_CPP17 && LTOOL_HAS_INCLUDE("../pkgs/magic_enum/magic_enum.hpp")
 #define LTOOL_HAS_MAGIC_ENUM 1
 #else
 #define LTOOL_HAS_MAGIC_ENUM 0
@@ -125,7 +125,7 @@
 #define LTOOL_HAS_RE2 0
 #endif
 
-#if LTOOL_USE_RFL_JSON && LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE("rfl/json.hpp")
+#if LTOOL_USE_RFL_JSON && LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE("../pkgs/rfl/json.hpp")
 #define LTOOL_HAS_BUNDLED_RFL_JSON 1
 #define LTOOL_HAS_RFL_JSON 1
 #elif LTOOL_USE_RFL_JSON && LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE(<rfl/json.hpp>)
@@ -162,7 +162,7 @@
 #define LTOOL_HAS_SIMDJSON 0
 #endif
 
-#if LTOOL_USE_YYJSON && LTOOL_HAS_INCLUDE("rfl/thirdparty/yyjson.h")
+#if LTOOL_USE_YYJSON && LTOOL_HAS_INCLUDE("../pkgs/rfl/thirdparty/yyjson.h")
 #define LTOOL_HAS_YYJSON 1
 #define LTOOL_HAS_RFL_YYJSON 1
 #elif LTOOL_USE_YYJSON && LTOOL_HAS_INCLUDE(<yyjson.h>)

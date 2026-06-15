@@ -6,7 +6,7 @@
 #ifndef LTOOL_LLOG_INCLUDE
 #define LTOOL_LLOG_INCLUDE
 
-#include "LConfig.hpp"
+#include "detail/LConfig.hpp"
 
 #if !LTOOL_HAS_CPP11
 #error "LLog requires C++11 or later"
@@ -36,7 +36,7 @@
 #include <source_location>
 #endif
 
-#include "LFmt.hpp"
+#include "detail/LFmt.hpp"
 
 #define LTOOL_LOG_LEVEL_TRACE 0
 #define LTOOL_LOG_LEVEL_DEBUG 1
