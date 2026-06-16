@@ -51,7 +51,7 @@ c++ -std=c++20 -I. demo.cpp -o demo -liconv
 c++ -std=c++20 -I. demo.cpp -o demo
 ```
 
-如果只使用 `LString.hpp` 或 `LLog.hpp`，核心能力可在 C++11 下工作；`LFile.hpp` 需要 C++17 `std::filesystem`，`Locked.hpp` 使用了 C++20 concepts。
+如果只使用 `LString.hpp` 或 `LLog.hpp`，核心能力可在 C++11 下工作；`LPath.hpp` 和 `LFile.hpp` 需要 C++17 `std::filesystem`，`Locked.hpp` 使用了 C++20 concepts。
 
 ## CMake 集成
 
@@ -77,8 +77,8 @@ cmake --install build/ltool
 ### `LTool.hpp`
 
 `LTool.hpp` 是常用组件总入口，会引入 `detail/LConfig.hpp`、`LString.hpp`、`LLog.hpp`、
-`LJson.hpp`、`LEnv.hpp`、`LTimer.hpp`、`LRandom.hpp`、`LFile.hpp`、`Locked.hpp` 和
-`LThreadPool.hpp`。其中 `LFile.hpp` 只在检测到 C++17 `std::filesystem` 时引入，
+`LJson.hpp`、`LEnv.hpp`、`LTimer.hpp`、`LRandom.hpp`、`LPath.hpp`、`LFile.hpp`、`Locked.hpp` 和
+`LThreadPool.hpp`。其中 `LPath.hpp` 和 `LFile.hpp` 只在检测到 C++17 `std::filesystem` 时引入，
 `LThreadPool.hpp` 只在 C++17 起引入，
 `Locked.hpp` 只在检测到 C++20 concepts 时引入。
 
@@ -225,25 +225,52 @@ void string_example() {
 }
 ```
 
-### `LFile.hpp`
+### `LPath.hpp`
 
-`LFile` 是 `std::filesystem::path` 的薄封装。对象本身只保存路径，不缓存文件内容；读写函数会在调用时访问文件系统。查询类函数通常吞掉 `filesystem_error` 并返回保守结果，读写和变更类函数失败时会抛出异常。
+`LPath` 是 `std::filesystem::path` 的薄封装，专注路径、目录遍历和文件系统路径操作。查询类函数通常吞掉 `filesystem_error` 并返回保守结果；变更类函数失败时会抛出异常。
 
 常用能力：
 
-- 文件读写：`read_bytes()`、`read_text()`、`read_lines()`、`write_bytes()`、`write_text()`、`write_lines()`、`append_text()`。
 - 目录操作：`create_directories()`、`files()`、`recursive_files()`、`directories()`、`list()`。
 - 路径辅助：`filename()`、`stem()`、`extension()`、`parent_path()`、`absolute()`、`canonical()`、`relative_to()`、`normalized()`。
-- 文件系统操作：`touch()`、`copy_to()`、`copy_file_to()`、`move_to()`、`remove()`、`remove_all()`、`permissions()`。
-- 临时路径：`temp_directory()`、`temp_file()`、`create_temp_file()`。
+- 文件系统操作：`copy_to()`、`copy_file_to()`、`move_to()`、`remove()`、`remove_all()`、`permissions()`。
+- 临时路径：`temp_directory()`、`temp_path()`。
 - 简单通配：`glob()` / `glob_path()` 支持文件名中的 `*` 和 `?`。
 
 示例：
 
 ```cpp
-#include "LFile.hpp"
+#include "LPath.hpp"
 
 #include <iostream>
+
+void path_example() {
+    LPath src = "src";
+    for (const auto& cpp : src.recursive_files(".cpp")) {
+        std::cout << cpp << "\n";
+    }
+
+    auto header = src / "ltool" / "LPath.hpp";
+    std::cout << header.normalized() << "\n";
+}
+```
+
+### `LFile.hpp`
+
+`LFile` 保存一个 `LPath`，但职责集中在普通文件内容读写。路径拼接、目录枚举、glob、路径规范化等能力由 `LPath` 提供。
+
+常用能力：
+
+- 文件读写：`read_bytes()`、`read_text()`、`read_lines()`、`write_bytes()`、`write_text()`、`write_lines()`、`append_text()`。
+- 内容查找替换：`contains()`、`find()`、`replace_all()`、`regex_contains()`、`regex_find_all()`、`regex_replace()`；原始字节可用 `bytes_find()`、`replace_bytes_all()`。
+- 流和随机访问：`open_input()`、`open_output()`、`open_stream()`、`read_bytes_at()`、`read_bytes_from()`、`write_bytes_at()`、`seekg()`、`seekp()`、`tellg()`、`tellp()`。
+- 文件操作：`touch()`、`copy_to()`、`move_to()`、`remove()`。
+- 临时文件：`create_temp_file()`。
+
+示例：
+
+```cpp
+#include "LFile.hpp"
 
 void file_example() {
     LFile file = "data/hello.txt";
@@ -251,10 +278,6 @@ void file_example() {
 
     LString text = file.read_text();                // 默认自动检测输入编码
     auto lines = file.read_lines();
-
-    for (const auto& cpp : LFile::recursive_files(std::filesystem::path("src"), ".cpp")) {
-        std::cout << cpp << "\n";
-    }
 
     auto tmp = LFile::create_temp_file("ltool-", ".txt");
     tmp.write_text("temporary text");
@@ -384,6 +407,7 @@ GBK/GB2312 转换在 Windows 上使用系统代码页 API；在 Unix-like 平台
 ├── LTimer.hpp
 ├── LRandom.hpp
 ├── LString.hpp
+├── LPath.hpp
 ├── LFile.hpp
 ├── Locked.hpp
 └── pkgs/

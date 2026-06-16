@@ -17,6 +17,7 @@
 #include "LTable.hpp"
 
 #if LTOOL_HAS_FILESYSTEM
+#include "LPath.hpp"
 #include "LFile.hpp"
 #endif
 
