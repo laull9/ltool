@@ -217,6 +217,13 @@ private:
         array
     };
 
+    struct array_index_cache {
+        yyjson_mut_val* array = nullptr;
+        yyjson_mut_val* value = nullptr;
+        std::size_t index = 0;
+        std::size_t size = 0;
+    };
+
     mutable std::string text_;
     mutable std::shared_ptr<yyjson_mut_doc> doc_;
     mutable yyjson_mut_val* value_ = nullptr;
@@ -225,6 +232,7 @@ private:
     mutable std::string key_;
     mutable std::size_t index_ = 0;
     mutable std::shared_ptr<bool> text_dirty_;
+    mutable std::shared_ptr<array_index_cache> array_cache_;
     bool proxy_ = false;
     bool valid_ = true;
 
@@ -250,6 +258,7 @@ private:
          std::string key,
          std::size_t index,
          std::shared_ptr<bool> text_dirty,
+         std::shared_ptr<array_index_cache> array_cache,
          bool proxy)
         : doc_(std::move(doc)),
           value_(value),
@@ -258,6 +267,7 @@ private:
           key_(std::move(key)),
           index_(index),
           text_dirty_(std::move(text_dirty)),
+          array_cache_(std::move(array_cache)),
           proxy_(proxy) {}
 
     template<class Maker>
@@ -268,6 +278,7 @@ private:
         parent_ = nullptr;
         relation_ = relation_kind::root;
         text_dirty_ = std::make_shared<bool>(true);
+        array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
     }
@@ -287,6 +298,7 @@ private:
         parent_ = nullptr;
         relation_ = relation_kind::root;
         text_dirty_ = std::make_shared<bool>(true);
+        array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
     }
@@ -306,6 +318,7 @@ private:
         parent_ = nullptr;
         relation_ = relation_kind::root;
         text_dirty_ = std::make_shared<bool>(true);
+        array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
     }
@@ -316,6 +329,7 @@ private:
         value_ = require_value(value_);
         yyjson_mut_doc_set_root(doc_.get(), value_);
         text_dirty_ = std::make_shared<bool>(true);
+        array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
 
@@ -325,6 +339,7 @@ private:
         value_ = require_value(value_);
         yyjson_mut_doc_set_root(doc_.get(), value_);
         text_dirty_ = std::make_shared<bool>(true);
+        array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
 
@@ -361,6 +376,7 @@ private:
         parent_ = nullptr;
         relation_ = relation_kind::root;
         text_dirty_ = std::make_shared<bool>(false);
+        array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
     }
@@ -405,6 +421,12 @@ private:
         *text_dirty_ = true;
     }
 
+    void clear_array_cache() const noexcept {
+        if (array_cache_) {
+            *array_cache_ = array_index_cache{};
+        }
+    }
+
     void sync_text() const {
         if (!value_) {
             return;
@@ -439,6 +461,7 @@ private:
     void replace_current(yyjson_mut_val* value) {
         value = require_value(value);
         if (!proxy_ || relation_ == relation_kind::root) {
+            clear_array_cache();
             yyjson_mut_doc_set_root(doc_.get(), value);
             value_ = value;
             parent_ = nullptr;
@@ -457,6 +480,7 @@ private:
                 value_ = value;
             }
         } else {
+            clear_array_cache();
             if (!yyjson_mut_arr_replace(parent_, index_, value)) {
                 throw std::runtime_error("yyjson failed to replace array value");
             }
@@ -479,6 +503,7 @@ private:
         parent_ = nullptr;
         relation_ = relation_kind::root;
         text_dirty_ = std::make_shared<bool>(true);
+        array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
 
@@ -622,22 +647,63 @@ private:
 
     yyjson_mut_val* array_child(yyjson_mut_val* value, std::size_t index) {
         while (yyjson_mut_arr_size(value) <= index) {
+            clear_array_cache();
             auto* item = require_value(yyjson_mut_null(doc_.get()));
             if (!yyjson_mut_arr_append(value, item)) {
                 throw std::runtime_error("yyjson failed to grow array");
             }
         }
-        return yyjson_mut_arr_get(value, index);
+        return array_child_unchecked(value, index);
     }
 
-    static yyjson_mut_val* array_child_const(yyjson_mut_val* value, std::size_t index) {
+    yyjson_mut_val* array_child_const(yyjson_mut_val* value, std::size_t index) const {
         if (!yyjson_mut_is_arr(value)) {
             throw std::domain_error("LJson::Json value is not an array");
         }
-        auto* child = yyjson_mut_arr_get(value, index);
+        auto* child = array_child_unchecked(value, index);
         if (!child) {
             throw std::out_of_range("LJson::Json array index out of range");
         }
+        return child;
+    }
+
+    yyjson_mut_val* array_child_unchecked(yyjson_mut_val* value, std::size_t index) const {
+        const auto size = yyjson_mut_arr_size(value);
+        if (index >= size) {
+            return nullptr;
+        }
+
+        if (!array_cache_) {
+            array_cache_ = std::make_shared<array_index_cache>();
+        }
+
+        auto& cache = *array_cache_;
+        yyjson_mut_val* child = nullptr;
+        if (cache.array == value && cache.value && cache.size == size) {
+            if (index == cache.index) {
+                child = cache.value;
+            } else if (index > cache.index) {
+                child = cache.value;
+                for (auto i = cache.index; i < index; ++i) {
+                    child = child->next;
+                }
+            }
+        }
+
+        if (!child) {
+            if (index == 0) {
+                child = yyjson_mut_arr_get_first(value);
+            } else if (index + 1 == size) {
+                child = yyjson_mut_arr_get_last(value);
+            } else {
+                child = yyjson_mut_arr_get(value, index);
+            }
+        }
+
+        cache.array = value;
+        cache.value = child;
+        cache.index = index;
+        cache.size = size;
         return child;
     }
 
@@ -703,7 +769,8 @@ private:
                     relation_kind relation,
                     std::string key = std::string(),
                     std::size_t index = 0) const {
-        return Json(doc_, value, parent, relation, std::move(key), index, text_dirty_, true);
+        return Json(doc_, value, parent, relation, std::move(key), index,
+                    text_dirty_, array_cache_, true);
     }
 
     Json make_detached_copy(yyjson_mut_val* value) const {
@@ -728,6 +795,7 @@ private:
                 parent = current;
                 relation = relation_kind::array;
                 if (part == "-") {
+                    clear_array_cache();
                     auto* item = require_value(yyjson_mut_null(doc_.get()));
                     if (!yyjson_mut_arr_append(current, item)) {
                         throw std::runtime_error("yyjson failed to append array value");
@@ -1014,6 +1082,7 @@ public:
             key_ = other.key_;
             index_ = other.index_;
             text_dirty_ = other.text_dirty_;
+            array_cache_ = other.array_cache_;
             proxy_ = true;
             valid_ = other.valid_;
             return;
@@ -1037,6 +1106,7 @@ public:
           key_(std::move(other.key_)),
           index_(other.index_),
           text_dirty_(std::move(other.text_dirty_)),
+          array_cache_(std::move(other.array_cache_)),
           proxy_(other.proxy_),
           valid_(other.valid_) {
         other.value_ = nullptr;
@@ -1057,6 +1127,7 @@ public:
         if (!other.valid_) {
             doc_.reset();
             value_ = nullptr;
+            array_cache_.reset();
             valid_ = false;
             return *this;
         }
@@ -1069,6 +1140,7 @@ public:
             doc_.reset();
             value_ = nullptr;
             text_dirty_.reset();
+            array_cache_.reset();
         }
         parent_ = nullptr;
         relation_ = relation_kind::root;
@@ -1095,6 +1167,7 @@ public:
         key_ = std::move(other.key_);
         index_ = other.index_;
         text_dirty_ = std::move(other.text_dirty_);
+        array_cache_ = std::move(other.array_cache_);
         proxy_ = other.proxy_;
         valid_ = other.valid_;
         other.value_ = nullptr;
@@ -1444,6 +1517,7 @@ public:
         }
         auto* removed = yyjson_mut_obj_remove_keyn(value, key.data(), key.size());
         if (removed) {
+            clear_array_cache();
             mark_dirty();
             return 1;
         }
@@ -1455,6 +1529,7 @@ public:
         if (!yyjson_mut_is_arr(value) || index >= yyjson_mut_arr_size(value)) {
             throw std::out_of_range("LJson::Json array index out of range");
         }
+        clear_array_cache();
         yyjson_mut_arr_remove(value, index);
         mark_dirty();
     }
@@ -1488,6 +1563,7 @@ public:
             if (index >= yyjson_mut_arr_size(current)) {
                 return false;
             }
+            clear_array_cache();
             yyjson_mut_arr_remove(current, index);
             mark_dirty();
             return true;
@@ -1495,6 +1571,7 @@ public:
         if (yyjson_mut_is_obj(current)) {
             auto* removed = yyjson_mut_obj_remove_keyn(current, leaf.data(), leaf.size());
             if (removed) {
+                clear_array_cache();
                 mark_dirty();
                 return true;
             }
@@ -1504,6 +1581,7 @@ public:
 
     void clear() {
         auto* value = mutable_value();
+        clear_array_cache();
         if (yyjson_mut_is_arr(value)) {
             yyjson_mut_arr_clear(value);
         } else if (yyjson_mut_is_obj(value)) {
@@ -1521,6 +1599,7 @@ public:
     void push_back(Json value) {
         auto* target = ensure_array_value();
         auto* copied = require_value(yyjson_mut_val_mut_copy(doc_.get(), value.const_value()));
+        clear_array_cache();
         if (!yyjson_mut_arr_append(target, copied)) {
             throw std::runtime_error("yyjson failed to append array value");
         }
@@ -1533,6 +1612,7 @@ public:
     void push_back(T&& value) {
         auto* target = ensure_array_value();
         auto* item = require_value(make_json_value(std::forward<T>(value)));
+        clear_array_cache();
         if (!yyjson_mut_arr_append(target, item)) {
             throw std::runtime_error("yyjson failed to append array value");
         }
@@ -1544,7 +1624,7 @@ public:
         push_back(Json(std::forward<Args>(args)...));
         auto* target = ensure_array_value();
         const auto index = yyjson_mut_arr_size(target) - 1;
-        return make_proxy(yyjson_mut_arr_get(target, index), target,
+        return make_proxy(yyjson_mut_arr_get_last(target), target,
                           relation_kind::array, std::string(), index);
     }
 
@@ -1571,6 +1651,7 @@ public:
                 }
             }
         }
+        clear_array_cache();
         mark_dirty();
     }
 
@@ -1696,6 +1777,7 @@ public:
     std::size_t erase_recursive(const std::string& key) {
         auto count = erase_recursive_into(mutable_value(), key);
         if (count != 0) {
+            clear_array_cache();
             mark_dirty();
         }
         return count;
