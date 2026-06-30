@@ -20,6 +20,7 @@
 #define LTOOL_LTHREAD_POOL_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 
 #if !LTOOL_HAS_THREAD_POOL
 #error "LThreadPool requires C++17 or later"
@@ -52,11 +53,17 @@ public:
     explicit BasicLThreadPool(std::size_t threads)
         : pool_(threads) {}
 
-    template<class F>
+    template<class F
+             LTOOL_ENABLE_IF(std::is_invocable<F>::value ||
+                             std::is_invocable<F, std::size_t>::value)>
+        LTOOL_REQUIRES(std::invocable<F> || std::invocable<F, std::size_t>)
     explicit BasicLThreadPool(F&& init)
         : pool_(std::forward<F>(init)) {}
 
-    template<class F>
+    template<class F
+             LTOOL_ENABLE_IF(std::is_invocable<F>::value ||
+                             std::is_invocable<F, std::size_t>::value)>
+        LTOOL_REQUIRES(std::invocable<F> || std::invocable<F, std::size_t>)
     BasicLThreadPool(std::size_t threads, F&& init)
         : pool_(threads, std::forward<F>(init)) {}
 
@@ -94,7 +101,10 @@ public:
     /**
      * @brief 提交一个有返回值或可等待的任务。
      */
-    template<class F, class R = std::invoke_result_t<std::decay_t<F>>>
+    template<class F,
+             class R = std::invoke_result_t<std::decay_t<F>>
+             LTOOL_ENABLE_IF(std::is_invocable<std::decay_t<F>>::value)>
+        LTOOL_REQUIRES(std::invocable<std::decay_t<F>>)
     std::future<R> submit(F&& fn, priority_t priority = 0) {
         return pool_.submit_task(std::forward<F>(fn), priority);
     }
@@ -102,12 +112,14 @@ public:
     /**
      * @brief 提交一个无需 future 的任务。
      */
-    template<class F>
+    template<class F LTOOL_ENABLE_IF(std::is_invocable<std::decay_t<F>>::value)>
+        LTOOL_REQUIRES(std::invocable<std::decay_t<F>>)
     void post(F&& fn, priority_t priority = 0) {
         pool_.detach_task(std::forward<F>(fn), priority);
     }
 
-    template<class F>
+    template<class F LTOOL_ENABLE_IF(std::is_invocable<std::decay_t<F>>::value)>
+        LTOOL_REQUIRES(std::invocable<std::decay_t<F>>)
     void detach(F&& fn, priority_t priority = 0) {
         post(std::forward<F>(fn), priority);
     }
@@ -162,7 +174,10 @@ public:
         pool_.reset(threads);
     }
 
-    template<class F>
+    template<class F
+             LTOOL_ENABLE_IF(std::is_invocable<F>::value ||
+                             std::is_invocable<F, std::size_t>::value)>
+        LTOOL_REQUIRES(std::invocable<F> || std::invocable<F, std::size_t>)
     void reset(std::size_t threads, F&& init) {
         pool_.reset(threads, std::forward<F>(init));
     }

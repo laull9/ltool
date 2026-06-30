@@ -7,6 +7,7 @@
 #define LTOOL_LTOML_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -112,9 +113,8 @@ public:
     TomlView(const std::string& text)
         : data_(text.data()), size_(text.size()) {}
 
-    template<class Text,
-             typename std::enable_if<detail::is_toml_text_source<Text>::value,
-                                     int>::type = 0>
+    template<class Text LTOOL_ENABLE_IF(detail::is_toml_text_source<Text>::value)>
+        LTOOL_REQUIRES(detail::is_toml_text_source<Text>::value)
     TomlView(const Text& text)
         : data_(text.data()), size_(text.size()) {}
 
@@ -158,9 +158,8 @@ public:
     Toml(std::string text)
         : text_(std::move(text)) {}
 
-    template<class Text,
-             typename std::enable_if<detail::is_toml_text_source<Text>::value,
-                                     int>::type = 0>
+    template<class Text LTOOL_ENABLE_IF(detail::is_toml_text_source<Text>::value)>
+        LTOOL_REQUIRES(detail::is_toml_text_source<Text>::value)
     Toml(const Text& text)
         : text_(text.data(), text.size()) {}
 

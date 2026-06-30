@@ -24,6 +24,7 @@
 #define LTOOL_LTIMER_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 
 #include <chrono>
 #include <functional>
@@ -172,14 +173,16 @@ public:
     /**
      * @brief 执行函数并返回耗时；不接管函数返回值。
      */
-    template<class F>
+    template<class F LTOOL_ENABLE_IF(LTool::traits::is_invocable<F>::value)>
+        LTOOL_REQUIRES(LTool::concepts::InvocableWith<F>)
     static duration measure(F&& fn) {
         LTimer timer;
         std::forward<F>(fn)();
         return timer.elapsed();
     }
 
-    template<class F>
+    template<class F LTOOL_ENABLE_IF(LTool::traits::is_invocable<F>::value)>
+        LTOOL_REQUIRES(LTool::concepts::InvocableWith<F>)
     static double measure_ms(F&& fn) {
         return std::chrono::duration<double, std::milli>(measure(std::forward<F>(fn))).count();
     }

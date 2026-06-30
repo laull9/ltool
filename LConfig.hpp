@@ -7,6 +7,7 @@
 #define LTOOL_LCONFIG_PUBLIC_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 #include "LEnv.hpp"
 #include "LJson.hpp"
 #include "LToml.hpp"
@@ -23,6 +24,7 @@
 #include <string>
 #include <type_traits>
 #include <typeindex>
+#include <tuple>
 #include <vector>
 
 #if LTOOL_HAS_MAGIC_ENUM
@@ -40,6 +42,11 @@ enum class Format {
     json,
     toml,
     yaml
+};
+
+enum class MissingFields {
+    use_defaults,
+    strict
 };
 
 struct EnvOptions {
@@ -63,22 +70,85 @@ struct EnvBinding {
     std::function<bool(void*)> apply;
 };
 
+namespace detail {
+
+template<class T>
+struct member_pointer_traits;
+
+template<class Class, class Field>
+struct member_pointer_traits<Field Class::*> {
+    using class_type = Class;
+    using field_type = Field;
+};
+
+template<class Obj, class Member>
+decltype(auto) member_chain(Obj& obj, Member member);
+
+template<class Obj, class Member, class... Members>
+decltype(auto) member_chain(Obj& obj, Member member, Members... members);
+
+} // namespace detail
+
+template<class... Members>
+struct MemberPath {
+    std::tuple<Members...> members;
+};
+
+template<class... Members>
+    LTOOL_REQUIRES(LTool::concepts::MemberObjectPointerPack<Members...>)
+MemberPath<Members...> path(Members... members) {
+    static_assert(sizeof...(Members) > 0, "LConfig::path requires at least one member pointer");
+    static_assert(LTool::traits::all_member_object_pointers<Members...>::value,
+                  "LConfig::path requires member object pointers");
+    return MemberPath<Members...>{std::tuple<Members...>(members...)};
+}
+
 struct Options {
     Format format = Format::auto_detect;
-    EnvOptions env;
+    EnvOptions env_options;
     bool allow_missing_fields = true;
     bool search_parent_dirs = true;
     std::string search_start_dir;
     std::vector<EnvBinding> env_bindings;
 
-    template<class Root, class Field>
-    Options& bind_env(std::string key, Field Root::* member) {
-        return bind_env(std::move(key), member, env);
+    Options& use_format(Format value) {
+        format = value;
+        return *this;
+    }
+
+    Options& missing_fields(MissingFields policy) {
+        allow_missing_fields = policy == MissingFields::use_defaults;
+        return *this;
+    }
+
+    Options& search_parents(bool enabled = true) {
+        search_parent_dirs = enabled;
+        return *this;
+    }
+
+    Options& search_from(std::string dir) {
+        search_start_dir = std::move(dir);
+        return *this;
+    }
+
+    Options& ignore_empty_env(bool enabled = true) {
+        env_options.ignore_empty = enabled;
+        return *this;
+    }
+
+    Options& require_env(bool enabled = true) {
+        env_options.required = enabled;
+        return *this;
     }
 
     template<class Root, class Field>
-    Options& bind_env(std::string key, Field Root::* member,
-                      EnvBindOptions bind_options) {
+    Options& env(std::string key, Field Root::* member) {
+        return env(std::move(key), member, env_options);
+    }
+
+    template<class Root, class Field>
+    Options& env(std::string key, Field Root::* member,
+                 EnvBindOptions bind_options) {
         const auto stored_key = key;
         env_bindings.push_back(EnvBinding{
             std::move(key),
@@ -94,28 +164,91 @@ struct Options {
         return *this;
     }
 
-    template<class Root, class Accessor>
-    Options& bind_env(std::string key, Accessor accessor) {
-        return bind_env<Root>(std::move(key), std::move(accessor), env);
+    template<class First, class... Rest>
+    Options& env(std::string key, MemberPath<First, Rest...> member_path) {
+        return env(std::move(key), std::move(member_path), env_options);
+    }
+
+    template<class First, class... Rest>
+    Options& env(std::string key, MemberPath<First, Rest...> member_path,
+                 EnvBindOptions bind_options) {
+        using Root = typename detail::member_pointer_traits<First>::class_type;
+        const auto stored_key = key;
+        env_bindings.push_back(EnvBinding{
+            std::move(key),
+            std::type_index(typeid(Root)),
+            [stored_key, member_path, bind_options](void* root) {
+                auto& target = std::apply(
+                    [root](auto... members) -> decltype(auto) {
+                        return detail::member_chain(*static_cast<Root*>(root), members...);
+                    },
+                    member_path.members
+                );
+                return LConfig::load_from_env(stored_key, target, bind_options);
+            }
+        });
+        return *this;
+    }
+
+    template<class Root, class First, class Second, class... Rest>
+        LTOOL_REQUIRES(!std::same_as<typename std::decay<Second>::type, EnvBindOptions>)
+    LTOOL_CONSTRAINED_RETURN(
+        Options&,
+        !std::is_same<typename std::decay<Second>::type, EnvBindOptions>::value)
+    env(std::string key, First Root::* first, Second second, Rest... rest) {
+        return env(std::move(key), path(first, second, rest...));
     }
 
     template<class Root, class Accessor>
-    Options& bind_env(std::string key, Accessor accessor,
-                      EnvBindOptions bind_options) {
+    Options& env(std::string key, Accessor accessor) {
+        return env<Root>(std::move(key), std::move(accessor), env_options);
+    }
+
+    template<class Root, class Accessor>
+    Options& env(std::string key, Accessor accessor,
+                 EnvBindOptions bind_options) {
         using TargetRef = decltype(accessor(std::declval<Root&>()));
-        static_assert(std::is_lvalue_reference<TargetRef>::value,
-                      "LConfig::Options::bind_env accessor must return a field reference");
+        static_assert(std::is_lvalue_reference<TargetRef>::value ||
+                          std::is_pointer<typename std::decay<TargetRef>::type>::value,
+                      "LConfig::Options::env accessor must return a field reference or pointer");
 
         const auto stored_key = key;
         env_bindings.push_back(EnvBinding{
             std::move(key),
             std::type_index(typeid(Root)),
             [stored_key, accessor, bind_options](void* root) {
-                auto& target = accessor(*static_cast<Root*>(root));
+                auto&& target = accessor(*static_cast<Root*>(root));
                 return LConfig::load_from_env(stored_key, target, bind_options);
             }
         });
         return *this;
+    }
+
+    template<class Root, class Field>
+    Options& bind_env(std::string key, Field Root::* member) {
+        return env(std::move(key), member);
+    }
+
+    template<class Root, class Field>
+    Options& bind_env(std::string key, Field Root::* member,
+                      EnvBindOptions bind_options) {
+        return env(std::move(key), member, bind_options);
+    }
+
+    template<class Root, class First, class Second, class... Rest>
+    Options& bind_env(std::string key, First Root::* first, Second second, Rest... rest) {
+        return env(std::move(key), first, second, rest...);
+    }
+
+    template<class Root, class Accessor>
+    Options& bind_env(std::string key, Accessor accessor) {
+        return env<Root>(std::move(key), std::move(accessor));
+    }
+
+    template<class Root, class Accessor>
+    Options& bind_env(std::string key, Accessor accessor,
+                      EnvBindOptions bind_options) {
+        return env<Root>(std::move(key), std::move(accessor), bind_options);
     }
 };
 
@@ -123,6 +256,16 @@ namespace detail {
 
 template<class>
 struct dependent_false : std::false_type {};
+
+template<class Obj, class Member>
+decltype(auto) member_chain(Obj& obj, Member member) {
+    return obj.*member;
+}
+
+template<class Obj, class Member, class... Members>
+decltype(auto) member_chain(Obj& obj, Member member, Members... members) {
+    return member_chain(obj.*member, members...);
+}
 
 template<class T>
 struct is_optional : std::false_type {};

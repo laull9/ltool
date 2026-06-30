@@ -7,6 +7,7 @@
 #define LTOOL_LJSON_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 
 #include <cctype>
 #include <cstddef>
@@ -282,9 +283,8 @@ public:
     JsonView(const std::string& text)
         : data_(text.data()), size_(text.size()) {}
 
-    template<class Text,
-             typename std::enable_if<detail::is_json_text_source<Text>::value,
-                                     int>::type = 0>
+    template<class Text LTOOL_ENABLE_IF(detail::is_json_text_source<Text>::value)>
+        LTOOL_REQUIRES(detail::is_json_text_source<Text>::value)
     JsonView(const Text& text)
         : data_(text.data()), size_(text.size()) {}
 
@@ -653,10 +653,11 @@ private:
         return yyjson_mut_real(doc, value);
     }
 
-    template<class T,
-             typename std::enable_if<std::is_arithmetic<detail::remove_cvref_t<T>>::value &&
-                                         !std::is_same<detail::remove_cvref_t<T>, bool>::value,
-                                     int>::type = 0>
+    template<class T
+             LTOOL_ENABLE_IF(std::is_arithmetic<detail::remove_cvref_t<T>>::value &&
+                             !std::is_same<detail::remove_cvref_t<T>, bool>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Arithmetic<detail::remove_cvref_t<T>> &&
+                       !std::same_as<detail::remove_cvref_t<T>, bool>)
     yyjson_mut_val* make_json_value(T value) {
         return make_number(mutable_doc(), value);
     }
@@ -1289,9 +1290,8 @@ public:
     Json(std::string text)
         : text_(std::move(text)) {}
 
-    template<class Text,
-             typename std::enable_if<detail::is_json_text_source<Text>::value,
-                                     int>::type = 0>
+    template<class Text LTOOL_ENABLE_IF(detail::is_json_text_source<Text>::value)>
+        LTOOL_REQUIRES(detail::is_json_text_source<Text>::value)
     Json(const Text& text)
         : text_(text.data(), text.size()) {}
 
@@ -1565,9 +1565,8 @@ public:
         target.set_value_from(value);
     }
 
-    template<class T,
-             typename std::enable_if<!std::is_same<detail::remove_cvref_t<T>, Json>::value,
-                                     int>::type = 0>
+    template<class T LTOOL_ENABLE_IF(!std::is_same<detail::remove_cvref_t<T>, Json>::value)>
+        LTOOL_REQUIRES(!std::same_as<detail::remove_cvref_t<T>, Json>)
     void set_pointer(const std::string& path, T&& value) {
         auto target = pointer_value(path, true);
         target.replace_current(require_value(target.make_json_value(std::forward<T>(value))));
@@ -1702,9 +1701,8 @@ public:
         mark_dirty();
     }
 
-    template<class T,
-             typename std::enable_if<!std::is_same<detail::remove_cvref_t<T>, Json>::value,
-                                     int>::type = 0>
+    template<class T LTOOL_ENABLE_IF(!std::is_same<detail::remove_cvref_t<T>, Json>::value)>
+        LTOOL_REQUIRES(!std::same_as<detail::remove_cvref_t<T>, Json>)
     void push_back(T&& value) {
         auto* target = ensure_array_value();
         auto* item = require_value(make_json_value(std::forward<T>(value)));
@@ -1929,34 +1927,30 @@ public:
         return !(rhs == lhs);
     }
 
-    template<class T,
-             typename std::enable_if<std::is_arithmetic<T>::value &&
-                                         !std::is_same<T, bool>::value,
-                                     int>::type = 0>
+    template<class T
+             LTOOL_ENABLE_IF(std::is_arithmetic<T>::value && !std::is_same<T, bool>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Arithmetic<T> && !std::same_as<T, bool>)
     friend bool operator==(const Json& lhs, T rhs) {
         return lhs.is_number() && lhs.as_double() == static_cast<double>(rhs);
     }
 
-    template<class T,
-             typename std::enable_if<std::is_arithmetic<T>::value &&
-                                         !std::is_same<T, bool>::value,
-                                     int>::type = 0>
+    template<class T
+             LTOOL_ENABLE_IF(std::is_arithmetic<T>::value && !std::is_same<T, bool>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Arithmetic<T> && !std::same_as<T, bool>)
     friend bool operator==(T lhs, const Json& rhs) {
         return rhs == lhs;
     }
 
-    template<class T,
-             typename std::enable_if<std::is_arithmetic<T>::value &&
-                                         !std::is_same<T, bool>::value,
-                                     int>::type = 0>
+    template<class T
+             LTOOL_ENABLE_IF(std::is_arithmetic<T>::value && !std::is_same<T, bool>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Arithmetic<T> && !std::same_as<T, bool>)
     friend bool operator!=(const Json& lhs, T rhs) {
         return !(lhs == rhs);
     }
 
-    template<class T,
-             typename std::enable_if<std::is_arithmetic<T>::value &&
-                                         !std::is_same<T, bool>::value,
-                                     int>::type = 0>
+    template<class T
+             LTOOL_ENABLE_IF(std::is_arithmetic<T>::value && !std::is_same<T, bool>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Arithmetic<T> && !std::same_as<T, bool>)
     friend bool operator!=(T lhs, const Json& rhs) {
         return !(rhs == lhs);
     }

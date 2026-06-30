@@ -221,8 +221,8 @@ void config_format_example() {
 
 `LConfig` 统一 JSON/TOML/YAML 配置读写。`load<T>()` 会按扩展名识别 `.json`、`.toml`、`.tml`、
 `.yaml` 和 `.yml`，并默认从当前目录向父目录查找配置文件；`write<T>()` / `save<T>()` 可指定输出格式。
-配置文件缺少字段时默认使用结构体里的默认值；需要严格要求文件写全时，可把 `options.allow_missing_fields`
-设为 `false`。环境变量覆盖基于 `LEnv` 的进程环境变量 API，通过 `Options::bind_env()` 显式注册到具体字段，
+配置文件缺少字段时默认使用结构体里的默认值；需要严格要求文件写全时，可把 `missing_fields()` 设为
+`MissingFields::strict`。环境变量覆盖基于 `LEnv` 的进程环境变量 API，通过 `Options::env()` 显式注册到具体字段，
 避免嵌套配置被字段名规则隐式覆盖。单独读取某个环境变量到变量时，可使用 `load_from_env()`。
 
 ```cpp
@@ -239,13 +239,12 @@ struct AppConfig {
 };
 
 void load_config_example() {
-    LConfig::Options options;
-    options.bind_env("APP_PORT", &AppConfig::port);
-    options.bind_env<AppConfig>("APP_DATABASE_HOST", [](AppConfig& cfg) -> auto& {
-        return cfg.database.host;
-    });
-
-    auto cfg = LConfig::load<AppConfig>("config.toml", options);
+    auto cfg = LConfig::load<AppConfig>(
+        "config.toml",
+        LConfig::Options{}
+            .env("APP_PORT", &AppConfig::port)
+            .env("APP_DATABASE_HOST", &AppConfig::database, &Database::host)
+    );
 }
 ```
 

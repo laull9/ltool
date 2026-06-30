@@ -14,6 +14,7 @@
 #ifndef LFILE_INCLUDE
 #define LFILE_INCLUDE
 
+#include "detail/LConcepts.hpp"
 #include "LPath.hpp"
 
 #include <fstream>
@@ -133,7 +134,8 @@ inline std::fstream open_io_stream(const std::filesystem::path& path,
     return file;
 }
 
-template<class Range>
+template<class Range LTOOL_ENABLE_IF(LTool::traits::is_const_range<Range>::value)>
+    LTOOL_REQUIRES(LTool::concepts::ConstRange<Range>)
 inline LString join_lines(const Range& lines, LStringDetail::string_view newline,
                           bool final_newline) {
     LString out;
@@ -464,7 +466,8 @@ public:
         return *this;
     }
 
-    template<class Range>
+    template<class Range LTOOL_ENABLE_IF(LTool::traits::is_const_range<Range>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Range>)
     LFile& write_lines(const Range& lines, LStringDetail::string_view newline = "\n",
                        bool final_newline = true, LEncoding encoding = LEncoding::Utf8,
                        bool write_bom = false, bool strict = true, bool create_parent = true) {
@@ -473,7 +476,8 @@ public:
         return *this;
     }
 
-    template<class Range>
+    template<class Range LTOOL_ENABLE_IF(LTool::traits::is_const_range<Range>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Range>)
     LFile& append_lines(const Range& lines, LStringDetail::string_view newline = "\n",
                         bool final_newline = true, LEncoding encoding = LEncoding::Utf8,
                         bool write_bom = false, bool strict = true, bool create_parent = true) {
@@ -804,7 +808,8 @@ public:
                                      LFileWriteMode::Append, create_parent);
     }
 
-    template<class Range>
+    template<class Range LTOOL_ENABLE_IF(LTool::traits::is_const_range<Range>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Range>)
     static void write_lines(const std::filesystem::path& path, const Range& lines,
                             LStringDetail::string_view newline = "\n",
                             bool final_newline = true, LEncoding encoding = LEncoding::Utf8,
@@ -814,7 +819,8 @@ public:
                    encoding, write_bom, strict, create_parent);
     }
 
-    template<class Range>
+    template<class Range LTOOL_ENABLE_IF(LTool::traits::is_const_range<Range>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Range>)
     static void append_lines(const std::filesystem::path& path, const Range& lines,
                              LStringDetail::string_view newline = "\n",
                              bool final_newline = true, LEncoding encoding = LEncoding::Utf8,

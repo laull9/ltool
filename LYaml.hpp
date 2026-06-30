@@ -7,6 +7,7 @@
 #define LTOOL_LYAML_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -112,9 +113,8 @@ public:
     YamlView(const std::string& text)
         : data_(text.data()), size_(text.size()) {}
 
-    template<class Text,
-             typename std::enable_if<detail::is_yaml_text_source<Text>::value,
-                                     int>::type = 0>
+    template<class Text LTOOL_ENABLE_IF(detail::is_yaml_text_source<Text>::value)>
+        LTOOL_REQUIRES(detail::is_yaml_text_source<Text>::value)
     YamlView(const Text& text)
         : data_(text.data()), size_(text.size()) {}
 
@@ -158,9 +158,8 @@ public:
     Yaml(std::string text)
         : text_(std::move(text)) {}
 
-    template<class Text,
-             typename std::enable_if<detail::is_yaml_text_source<Text>::value,
-                                     int>::type = 0>
+    template<class Text LTOOL_ENABLE_IF(detail::is_yaml_text_source<Text>::value)>
+        LTOOL_REQUIRES(detail::is_yaml_text_source<Text>::value)
     Yaml(const Text& text)
         : text_(text.data(), text.size()) {}
 

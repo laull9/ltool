@@ -37,6 +37,7 @@
 #define LTOOL_LRANDOM_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 
 #include <algorithm>
 #include <array>
@@ -251,29 +252,27 @@ public:
     /**
      * @brief 使用线程局部默认实例返回闭区间 [min_value, max_value] 内的整数。
      */
-    template<class T>
-    static typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value,
-                                   T>::type
-    rand_int(T min_value, T max_value) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_non_bool_integral<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::NonBoolIntegral<T>)
+    static T rand_int(T min_value, T max_value) {
         return shared().integer(min_value, max_value);
     }
 
     /**
      * @brief 使用线程局部默认实例返回闭区间 [0, max_value] 内的整数。
      */
-    template<class T>
-    static typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value,
-                                   T>::type
-    rand_int(T max_value) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_non_bool_integral<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::NonBoolIntegral<T>)
+    static T rand_int(T max_value) {
         return shared().integer(max_value);
     }
 
     /**
      * @brief 使用线程局部默认实例返回半开区间 [min_value, max_value) 内的浮点数。
      */
-    template<class T>
-    static typename std::enable_if<std::is_floating_point<T>::value, T>::type rand_real(
-        T min_value, T max_value) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_floating_point<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::FloatingPoint<T>)
+    static T rand_real(T min_value, T max_value) {
         return shared().real(min_value, max_value);
     }
 
@@ -287,18 +286,18 @@ public:
     /**
      * @brief 使用线程局部默认实例返回正态分布随机数。
      */
-    template<class T>
-    static typename std::enable_if<std::is_floating_point<T>::value, T>::type rand_normal(
-        T mean = T(0), T stddev = T(1)) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_floating_point<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::FloatingPoint<T>)
+    static T rand_normal(T mean = T(0), T stddev = T(1)) {
         return shared().normal(mean, stddev);
     }
 
     /**
      * @brief 使用线程局部默认实例返回指数分布随机数。
      */
-    template<class T>
-    static typename std::enable_if<std::is_floating_point<T>::value, T>::type rand_exponential(
-        T lambda = T(1)) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_floating_point<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::FloatingPoint<T>)
+    static T rand_exponential(T lambda = T(1)) {
         return shared().exponential(lambda);
     }
 
@@ -333,7 +332,8 @@ public:
     /**
      * @brief 使用线程局部默认实例从迭代器区间随机选中一个位置。
      */
-    template<class It>
+    template<class It LTOOL_ENABLE_IF(LTool::traits::is_iterator<It>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     static It rand_pick(It first, It last) {
         return shared().pick(first, last);
     }
@@ -341,12 +341,14 @@ public:
     /**
      * @brief 使用线程局部默认实例从容器中随机选一个元素。
      */
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Range<Container>)
     static auto rand_choice(Container& values) -> decltype(*std::begin(values)) {
         return shared().choice(values);
     }
 
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_const_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Container>)
     static auto rand_choice(const Container& values) -> decltype(*std::begin(values)) {
         return shared().choice(values);
     }
@@ -362,12 +364,14 @@ public:
     /**
      * @brief 使用线程局部默认实例根据权重返回一个索引。
      */
-    template<class It>
+    template<class It LTOOL_ENABLE_IF(LTool::traits::is_iterator<It>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     static std::size_t rand_weighted_index(It first, It last) {
         return shared().weighted_index(first, last);
     }
 
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_const_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Container>)
     static std::size_t rand_weighted_index(const Container& weights) {
         return shared().weighted_index(weights);
     }
@@ -375,13 +379,21 @@ public:
     /**
      * @brief 使用线程局部默认实例按权重从容器中随机选一个元素。
      */
-    template<class Container, class Weights>
+    template<class Container, class Weights
+             LTOOL_ENABLE_IF(LTool::traits::is_range<Container>::value &&
+                             LTool::traits::is_const_range<Weights>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Range<Container> &&
+                       LTool::concepts::ConstRange<Weights>)
     static auto rand_weighted_choice(Container& values, const Weights& weights)
         -> decltype(*std::begin(values)) {
         return shared().weighted_choice(values, weights);
     }
 
-    template<class Container, class Weights>
+    template<class Container, class Weights
+             LTOOL_ENABLE_IF(LTool::traits::is_const_range<Container>::value &&
+                             LTool::traits::is_const_range<Weights>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Container> &&
+                       LTool::concepts::ConstRange<Weights>)
     static auto rand_weighted_choice(const Container& values, const Weights& weights)
         -> decltype(*std::begin(values)) {
         return shared().weighted_choice(values, weights);
@@ -390,7 +402,8 @@ public:
     /**
      * @brief 使用线程局部默认实例原地打乱迭代器区间。
      */
-    template<class RandomIt>
+    template<class RandomIt LTOOL_ENABLE_IF(LTool::traits::is_random_access_iterator<RandomIt>::value)>
+        LTOOL_REQUIRES(LTool::concepts::RandomAccessIterator<RandomIt>)
     static void rand_shuffle(RandomIt first, RandomIt last) {
         shared().shuffle(first, last);
     }
@@ -398,7 +411,8 @@ public:
     /**
      * @brief 使用线程局部默认实例原地打乱容器。
      */
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Range<Container>)
     static void rand_shuffle(Container& values) {
         shared().shuffle(values);
     }
@@ -406,7 +420,8 @@ public:
     /**
      * @brief 使用线程局部默认实例返回打乱后的容器副本。
      */
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Range<Container>)
     static Container rand_shuffled(Container values) {
         return shared().shuffled(std::move(values));
     }
@@ -414,14 +429,16 @@ public:
     /**
      * @brief 使用线程局部默认实例从区间中随机抽取最多 count 个元素。
      */
-    template<class It>
+    template<class It LTOOL_ENABLE_IF(LTool::traits::is_iterator<It>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     static std::vector<typename std::iterator_traits<It>::value_type> rand_sample(It first,
                                                                                   It last,
                                                                                   std::size_t count) {
         return shared().sample(first, last, count);
     }
 
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_const_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Container>)
     static std::vector<typename Container::value_type> rand_sample(const Container& values,
                                                                    std::size_t count) {
         return shared().sample(values, count);
@@ -437,7 +454,8 @@ public:
     /**
      * @brief 使用线程局部默认实例用随机字节填充可写迭代器区间。
      */
-    template<class It>
+    template<class It LTOOL_ENABLE_IF(LTool::traits::is_iterator<It>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     static void rand_fill_bytes(It first, It last) {
         shared().fill_bytes(first, last);
     }
@@ -528,9 +546,9 @@ public:
     /**
      * @brief 返回闭区间 [min_value, max_value] 内的整数。
      */
-    template<class T>
-    typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
-    integer(T min_value, T max_value) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_non_bool_integral<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::NonBoolIntegral<T>)
+    T integer(T min_value, T max_value) {
         LRandomDetail::require_ordered_range(min_value, max_value, "integer");
         using distribution_type = typename std::conditional<std::is_signed<T>::value,
                                                             long long,
@@ -544,18 +562,18 @@ public:
     /**
      * @brief 返回闭区间 [0, max_value] 内的整数。
      */
-    template<class T>
-    typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
-    integer(T max_value) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_non_bool_integral<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::NonBoolIntegral<T>)
+    T integer(T max_value) {
         return integer<T>(0, max_value);
     }
 
     /**
      * @brief 返回半开区间 [min_value, max_value) 内的浮点数。
      */
-    template<class T>
-    typename std::enable_if<std::is_floating_point<T>::value, T>::type real(T min_value,
-                                                                            T max_value) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_floating_point<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::FloatingPoint<T>)
+    T real(T min_value, T max_value) {
         LRandomDetail::require_ordered_range(min_value, max_value, "real");
         std::uniform_real_distribution<T> dist(min_value, max_value);
         return dist(engine_);
@@ -571,9 +589,9 @@ public:
     /**
      * @brief 返回均值 mean、标准差 stddev 的正态分布随机数。
      */
-    template<class T>
-    typename std::enable_if<std::is_floating_point<T>::value, T>::type normal(T mean = T(0),
-                                                                              T stddev = T(1)) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_floating_point<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::FloatingPoint<T>)
+    T normal(T mean = T(0), T stddev = T(1)) {
         if (stddev <= T(0)) {
             throw std::invalid_argument("LRandom normal stddev must be positive");
         }
@@ -584,8 +602,9 @@ public:
     /**
      * @brief 返回 lambda 参数下的指数分布随机数。
      */
-    template<class T>
-    typename std::enable_if<std::is_floating_point<T>::value, T>::type exponential(T lambda = T(1)) {
+    template<class T LTOOL_ENABLE_IF(LTool::traits::is_floating_point<T>::value)>
+        LTOOL_REQUIRES(LTool::concepts::FloatingPoint<T>)
+    T exponential(T lambda = T(1)) {
         if (lambda <= T(0)) {
             throw std::invalid_argument("LRandom exponential lambda must be positive");
         }
@@ -632,7 +651,8 @@ public:
     /**
      * @brief 从迭代器区间随机选中一个位置。
      */
-    template<class It>
+    template<class It LTOOL_ENABLE_IF(LTool::traits::is_iterator<It>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     It pick(It first, It last) {
         const auto count = std::distance(first, last);
         if (count <= 0) {
@@ -646,12 +666,14 @@ public:
     /**
      * @brief 从容器中随机选一个元素。
      */
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Range<Container>)
     auto choice(Container& values) -> decltype(*std::begin(values)) {
         return *pick(std::begin(values), std::end(values));
     }
 
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_const_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Container>)
     auto choice(const Container& values) -> decltype(*std::begin(values)) {
         return *pick(std::begin(values), std::end(values));
     }
@@ -667,7 +689,8 @@ public:
     /**
      * @brief 根据权重返回一个索引；权重为 0 的项不会被优先选中。
      */
-    template<class It>
+    template<class It LTOOL_ENABLE_IF(LTool::traits::is_iterator<It>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     std::size_t weighted_index(It first, It last) {
         std::vector<double> weights;
         for (; first != last; ++first) {
@@ -684,7 +707,8 @@ public:
         return dist(engine_);
     }
 
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_const_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Container>)
     std::size_t weighted_index(const Container& weights) {
         return weighted_index(std::begin(weights), std::end(weights));
     }
@@ -692,7 +716,11 @@ public:
     /**
      * @brief 按权重从容器中随机选一个元素。
      */
-    template<class Container, class Weights>
+    template<class Container, class Weights
+             LTOOL_ENABLE_IF(LTool::traits::is_range<Container>::value &&
+                             LTool::traits::is_const_range<Weights>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Range<Container> &&
+                       LTool::concepts::ConstRange<Weights>)
     auto weighted_choice(Container& values, const Weights& weights) -> decltype(*std::begin(values)) {
         const auto value_count = std::distance(std::begin(values), std::end(values));
         const auto weight_count = std::distance(std::begin(weights), std::end(weights));
@@ -708,7 +736,11 @@ public:
         return *it;
     }
 
-    template<class Container, class Weights>
+    template<class Container, class Weights
+             LTOOL_ENABLE_IF(LTool::traits::is_const_range<Container>::value &&
+                             LTool::traits::is_const_range<Weights>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Container> &&
+                       LTool::concepts::ConstRange<Weights>)
     auto weighted_choice(const Container& values, const Weights& weights)
         -> decltype(*std::begin(values)) {
         const auto value_count = std::distance(std::begin(values), std::end(values));
@@ -728,7 +760,8 @@ public:
     /**
      * @brief 原地打乱迭代器区间。
      */
-    template<class RandomIt>
+    template<class RandomIt LTOOL_ENABLE_IF(LTool::traits::is_random_access_iterator<RandomIt>::value)>
+        LTOOL_REQUIRES(LTool::concepts::RandomAccessIterator<RandomIt>)
     void shuffle(RandomIt first, RandomIt last) {
         std::shuffle(first, last, engine_);
     }
@@ -736,7 +769,8 @@ public:
     /**
      * @brief 原地打乱容器。
      */
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Range<Container>)
     void shuffle(Container& values) {
         shuffle(std::begin(values), std::end(values));
     }
@@ -744,7 +778,8 @@ public:
     /**
      * @brief 返回打乱后的容器副本。
      */
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Range<Container>)
     Container shuffled(Container values) {
         shuffle(values);
         return values;
@@ -753,7 +788,8 @@ public:
     /**
      * @brief 从区间中随机抽取最多 count 个元素。
      */
-    template<class It>
+    template<class It LTOOL_ENABLE_IF(LTool::traits::is_iterator<It>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     std::vector<typename std::iterator_traits<It>::value_type> sample(It first, It last,
                                                                       std::size_t count) {
         using value_type = typename std::iterator_traits<It>::value_type;
@@ -767,7 +803,8 @@ public:
         return pool;
     }
 
-    template<class Container>
+    template<class Container LTOOL_ENABLE_IF(LTool::traits::is_const_range<Container>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Container>)
     std::vector<typename Container::value_type> sample(const Container& values, std::size_t count) {
         return sample(std::begin(values), std::end(values), count);
     }
@@ -784,7 +821,8 @@ public:
     /**
      * @brief 用随机字节填充可写迭代器区间。
      */
-    template<class It>
+    template<class It LTOOL_ENABLE_IF(LTool::traits::is_iterator<It>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     void fill_bytes(It first, It last) {
         for (; first != last; ++first) {
             *first = static_cast<std::uint8_t>(integer<int>(0, 255));

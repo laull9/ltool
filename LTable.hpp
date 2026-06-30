@@ -28,6 +28,7 @@
 #define LTOOL_LTABLE_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 #include "pkgs/tabulate.hpp"
 
 #include <algorithm>
@@ -334,11 +335,14 @@ public:
         return add_row(row_type(cells));
     }
 
-    template<class Cells>
-    typename std::enable_if<!LTableDetail::is_text_like<Cells>::value &&
-                                !std::is_same<LTableDetail::remove_cvref_t<Cells>, row_type>::value,
-                            LTable&>::type
-    add_row(const Cells& cells) {
+    template<class Cells
+             LTOOL_ENABLE_IF(LTool::traits::is_const_range<Cells>::value &&
+                             !LTableDetail::is_text_like<Cells>::value &&
+                             !std::is_same<LTableDetail::remove_cvref_t<Cells>, row_type>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Cells> &&
+                       !LTableDetail::is_text_like<Cells>::value &&
+                       !std::same_as<LTableDetail::remove_cvref_t<Cells>, row_type>)
+    LTable& add_row(const Cells& cells) {
         return add_row(make_row(cells));
     }
 
@@ -355,11 +359,14 @@ public:
         return header(row_type(cells));
     }
 
-    template<class Cells>
-    typename std::enable_if<!LTableDetail::is_text_like<Cells>::value &&
-                                !std::is_same<LTableDetail::remove_cvref_t<Cells>, row_type>::value,
-                            LTable&>::type
-    header(const Cells& cells) {
+    template<class Cells
+             LTOOL_ENABLE_IF(LTool::traits::is_const_range<Cells>::value &&
+                             !LTableDetail::is_text_like<Cells>::value &&
+                             !std::is_same<LTableDetail::remove_cvref_t<Cells>, row_type>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Cells> &&
+                       !LTableDetail::is_text_like<Cells>::value &&
+                       !std::same_as<LTableDetail::remove_cvref_t<Cells>, row_type>)
+    LTable& header(const Cells& cells) {
         return header(make_row(cells));
     }
 
@@ -368,7 +375,8 @@ public:
         return header(make_row_values(values...));
     }
 
-    template<class Rows>
+    template<class Rows LTOOL_ENABLE_IF(LTool::traits::is_const_range<Rows>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Rows>)
     LTable& add_rows(const Rows& rows) {
         for (const auto& row : rows) {
             add_row(row);
@@ -464,7 +472,8 @@ public:
         return exporter.dump(copy);
     }
 
-    template<class Cells>
+    template<class Cells LTOOL_ENABLE_IF(LTool::traits::is_const_range<Cells>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Cells>)
     static row_type make_row(const Cells& cells) {
         row_type row;
         for (const auto& cell : cells) {
@@ -569,15 +578,15 @@ private:
         }
     }
 
-    template<class T>
-    static typename std::enable_if<std::is_convertible<T, cell_type>::value>::type
-    append_cell(row_type& row, const T& value) {
+    template<class T LTOOL_ENABLE_IF(std::is_convertible<T, cell_type>::value)>
+        LTOOL_REQUIRES(std::convertible_to<T, cell_type>)
+    static void append_cell(row_type& row, const T& value) {
         row.push_back(cell_type(value));
     }
 
-    template<class T>
-    static typename std::enable_if<!std::is_convertible<T, cell_type>::value>::type
-    append_cell(row_type& row, const T& value) {
+    template<class T LTOOL_ENABLE_IF(!std::is_convertible<T, cell_type>::value)>
+        LTOOL_REQUIRES(!std::convertible_to<T, cell_type>)
+    static void append_cell(row_type& row, const T& value) {
         row.push_back(LTableDetail::stream_to_string(value));
     }
 

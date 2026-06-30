@@ -52,6 +52,7 @@
 #define LSTRING_INCLUDE
 
 #include "detail/LToolConfig.hpp"
+#include "detail/LConcepts.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1365,10 +1366,12 @@ public:
         : data_(from_wstring(value).data_) {}
 
 #if LSTRING_HAS_MAGIC_ENUM
+    template<class E>
+    using enum_entries_result = std::vector<std::pair<LStringDetail::remove_cvref_t<E>, LString>>;
+
     /// 使用 magic_enum 将枚举值序列化为枚举项名称；未知值得到空字符串。
-    template<class E,
-             typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-                                     int>::type = 0>
+    template<class E LTOOL_ENABLE_IF(std::is_enum<LStringDetail::remove_cvref_t<E>>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
     LString(E value)
         : data_(std::string(magic_enum::enum_name(value))) {}
 #endif // LSTRING_HAS_MAGIC_ENUM
@@ -1394,13 +1397,11 @@ public:
         : data_(fmt::format("{}", value)) {}
 #else
     /// 从任意 fmt 可格式化对象构造；字符串来源保持原有字节语义。
-    template<class T,
-             typename std::enable_if<
-                 fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
-                     !LStringDetail::is_LString_text_source<T>::value &&
-                     !LStringDetail::is_magic_enum_source<T>::value &&
-                     !std::is_same<LStringDetail::remove_cvref_t<T>, LString>::value,
-                 int>::type = 0>
+    template<class T
+             LTOOL_ENABLE_IF(fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
+                             !LStringDetail::is_LString_text_source<T>::value &&
+                             !LStringDetail::is_magic_enum_source<T>::value &&
+                             !std::is_same<LStringDetail::remove_cvref_t<T>, LString>::value)>
     LString(const T& value)
         : data_(fmt::format("{}", value)) {}
 #endif // LSTRING_HAS_RANGES
@@ -1425,9 +1426,8 @@ public:
 
 #if LSTRING_HAS_MAGIC_ENUM
     /// 使用 magic_enum 将枚举值序列化为枚举项名称并赋值；未知值得到空字符串。
-    template<class E,
-             typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-                                     int>::type = 0>
+    template<class E LTOOL_ENABLE_IF(std::is_enum<LStringDetail::remove_cvref_t<E>>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
     LString& operator=(E value) {
         data_ = std::string(magic_enum::enum_name(value));
         return *this;
@@ -1448,13 +1448,11 @@ public:
     }
 #else
     /// 使用 fmt 将任意可格式化对象字符串化后赋值。
-    template<class T,
-             typename std::enable_if<
-                 fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
-                     !LStringDetail::is_LString_text_source<T>::value &&
-                     !LStringDetail::is_magic_enum_source<T>::value &&
-                     !std::is_same<LStringDetail::remove_cvref_t<T>, LString>::value,
-                 int>::type = 0>
+    template<class T
+             LTOOL_ENABLE_IF(fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
+                             !LStringDetail::is_LString_text_source<T>::value &&
+                             !LStringDetail::is_magic_enum_source<T>::value &&
+                             !std::is_same<LStringDetail::remove_cvref_t<T>, LString>::value)>
     LString& operator=(const T& value) {
         data_ = fmt::format("{}", value);
         return *this;
@@ -2085,7 +2083,10 @@ public:
 #if LSTRING_HAS_MAGIC_ENUM
     /// 使用 magic_enum 将枚举值序列化为枚举项名称；未知值得到空字符串。
     template<class E>
-    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, LString>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        LString,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     from_enum(E value) {
         return LStringDetail::string_view(magic_enum::enum_name(value).data(),
                                            magic_enum::enum_name(value).size());
@@ -2093,16 +2094,20 @@ public:
 
     /// from_enum() 的语义化别名。
     template<class E>
-    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, LString>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        LString,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     enum_name(E value) {
         return from_enum(value);
     }
 
     /// 使用 magic_enum 反序列化枚举名；失败时返回 std::nullopt。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        std::optional<LStringDetail::remove_cvref_t<E>>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        std::optional<LStringDetail::remove_cvref_t<E>>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum(LStringDetail::string_view text, bool case_sensitive = true) {
         using D = LStringDetail::remove_cvref_t<E>;
         auto trimmed_text = LString(text).trimmed();
@@ -2115,27 +2120,30 @@ public:
 
     /// 使用 magic_enum 反序列化枚举名；nullptr 视为空字符串。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        std::optional<LStringDetail::remove_cvref_t<E>>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        std::optional<LStringDetail::remove_cvref_t<E>>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum(const char* text, bool case_sensitive = true) {
         return to_enum<E>(LStringDetail::as_view(text), case_sensitive);
     }
 
     /// 使用 magic_enum 反序列化当前字符串；失败时返回 std::nullopt。
     template<class E>
-    typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        std::optional<LStringDetail::remove_cvref_t<E>>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    LTOOL_CONSTRAINED_RETURN(
+        std::optional<LStringDetail::remove_cvref_t<E>>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum(bool case_sensitive = true) const {
         return LString::to_enum<E>(view(), case_sensitive);
     }
 
     /// 使用 magic_enum 反序列化枚举名；失败时返回 @p default_value。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        LStringDetail::remove_cvref_t<E>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        LStringDetail::remove_cvref_t<E>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum_or(LStringDetail::string_view text, LStringDetail::remove_cvref_t<E> default_value,
                bool case_sensitive = true) {
         auto value = to_enum<E>(text, case_sensitive);
@@ -2144,9 +2152,10 @@ public:
 
     /// 使用 magic_enum 反序列化枚举名；nullptr 视为空字符串，失败时返回 @p default_value。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        LStringDetail::remove_cvref_t<E>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        LStringDetail::remove_cvref_t<E>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum_or(const char* text, LStringDetail::remove_cvref_t<E> default_value,
                bool case_sensitive = true) {
         return to_enum_or<E>(LStringDetail::as_view(text), default_value, case_sensitive);
@@ -2154,9 +2163,10 @@ public:
 
     /// 使用 magic_enum 反序列化当前字符串；失败时返回 @p default_value。
     template<class E>
-    typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        LStringDetail::remove_cvref_t<E>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    LTOOL_CONSTRAINED_RETURN(
+        LStringDetail::remove_cvref_t<E>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum_or(LStringDetail::remove_cvref_t<E> default_value,
                bool case_sensitive = true) const {
         auto value = to_enum<E>(case_sensitive);
@@ -2165,9 +2175,10 @@ public:
 
     /// 使用 magic_enum 反序列化枚举名；失败时抛出 std::runtime_error。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        LStringDetail::remove_cvref_t<E>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        LStringDetail::remove_cvref_t<E>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum_checked(LStringDetail::string_view text, bool case_sensitive = true) {
         auto value = to_enum<E>(text, case_sensitive);
         if (!value) {
@@ -2178,46 +2189,60 @@ public:
 
     /// 使用 magic_enum 反序列化枚举名；nullptr 视为空字符串，失败时抛出 std::runtime_error。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        LStringDetail::remove_cvref_t<E>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        LStringDetail::remove_cvref_t<E>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum_checked(const char* text, bool case_sensitive = true) {
         return to_enum_checked<E>(LStringDetail::as_view(text), case_sensitive);
     }
 
     /// 使用 magic_enum 反序列化当前字符串；失败时抛出 std::runtime_error。
     template<class E>
-    typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        LStringDetail::remove_cvref_t<E>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    LTOOL_CONSTRAINED_RETURN(
+        LStringDetail::remove_cvref_t<E>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     to_enum_checked(bool case_sensitive = true) const {
         return LString::to_enum_checked<E>(view(), case_sensitive);
     }
 
     /// 判断文本是否能反序列化为指定枚举。
     template<class E>
-    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, bool>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        bool,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     is_enum_name(LStringDetail::string_view text, bool case_sensitive = true) {
         return to_enum<E>(text, case_sensitive).has_value();
     }
 
     /// 判断文本是否能反序列化为指定枚举；nullptr 视为空字符串。
     template<class E>
-    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, bool>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        bool,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     is_enum_name(const char* text, bool case_sensitive = true) {
         return is_enum_name<E>(LStringDetail::as_view(text), case_sensitive);
     }
 
     /// 判断当前字符串是否能反序列化为指定枚举。
     template<class E>
-    typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, bool>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    LTOOL_CONSTRAINED_RETURN(
+        bool,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     is_enum_name(bool case_sensitive = true) const {
         return is_enum_name<E>(view(), case_sensitive);
     }
 
     /// 返回枚举类型名。
     template<class E>
-    static typename std::enable_if<std::is_enum<LStringDetail::remove_cvref_t<E>>::value, LString>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        LString,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     enum_type_name() {
         using D = LStringDetail::remove_cvref_t<E>;
         auto name = magic_enum::enum_type_name<D>();
@@ -2226,9 +2251,10 @@ public:
 
     /// 返回 magic_enum 可反射到的全部枚举名。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        std::vector<LString>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        std::vector<LString>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     enum_names() {
         using D = LStringDetail::remove_cvref_t<E>;
         std::vector<LString> out;
@@ -2242,9 +2268,10 @@ public:
 
     /// 返回 magic_enum 可反射到的全部枚举值。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        std::vector<LStringDetail::remove_cvref_t<E>>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        std::vector<LStringDetail::remove_cvref_t<E>>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     enum_values() {
         using D = LStringDetail::remove_cvref_t<E>;
         auto values = magic_enum::enum_values<D>();
@@ -2253,9 +2280,10 @@ public:
 
     /// 返回 magic_enum 可反射到的全部枚举值和名称。
     template<class E>
-    static typename std::enable_if<
-        std::is_enum<LStringDetail::remove_cvref_t<E>>::value,
-        std::vector<std::pair<LStringDetail::remove_cvref_t<E>, LString>>>::type
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    static LTOOL_CONSTRAINED_RETURN(
+        enum_entries_result<E>,
+        std::is_enum<LStringDetail::remove_cvref_t<E>>::value)
     enum_entries() {
         using D = LStringDetail::remove_cvref_t<E>;
         std::vector<std::pair<D, LString>> out;
@@ -2277,7 +2305,10 @@ public:
      * 不抛出异常。
      */
     template<class T>
-    typename std::enable_if<std::is_integral<T>::value, std::optional<T>>::type
+        LTOOL_REQUIRES(std::integral<LStringDetail::remove_cvref_t<T>>)
+    LTOOL_CONSTRAINED_RETURN(
+        std::optional<T>,
+        std::is_integral<T>::value)
     to_number(int base = 10) const {
         auto text = trimmed().view();
         T value {};
@@ -2297,7 +2328,10 @@ public:
      * 不抛出异常。
      */
     template<class T>
-    typename std::enable_if<std::is_floating_point<T>::value, std::optional<T>>::type
+        LTOOL_REQUIRES(std::floating_point<LStringDetail::remove_cvref_t<T>>)
+    LTOOL_CONSTRAINED_RETURN(
+        std::optional<T>,
+        std::is_floating_point<T>::value)
     to_number() const {
         auto text = trimmed().view();
         T value {};
@@ -2328,7 +2362,11 @@ public:
 
     /// 使用 fmt 默认格式化器格式化算术值。
     template<class T>
-    static typename std::enable_if<std::is_arithmetic<T>::value, LString>::type from_number(T value) {
+        LTOOL_REQUIRES(LTool::concepts::Arithmetic<T>)
+    static LTOOL_CONSTRAINED_RETURN(
+        LString,
+        std::is_arithmetic<T>::value)
+    from_number(T value) {
         return fmt::format("{}", value);
     }
 
