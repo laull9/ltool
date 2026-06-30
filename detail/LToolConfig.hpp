@@ -1,10 +1,10 @@
 /**
- * @file detail/LConfig.hpp
+ * @file detail/LToolConfig.hpp
  * @brief ltool 的版本、平台和语言特性配置入口。
  */
 
-#ifndef LTOOL_LCONFIG_INCLUDE
-#define LTOOL_LCONFIG_INCLUDE
+#ifndef LTOOL_LTOOL_CONFIG_INCLUDE
+#define LTOOL_LTOOL_CONFIG_INCLUDE
 
 #define LTOOL_VERSION_MAJOR 1
 #define LTOOL_VERSION_MINOR 0
@@ -47,6 +47,14 @@
 
 #ifndef LTOOL_USE_RFL_JSON
 #define LTOOL_USE_RFL_JSON 1
+#endif
+
+#ifndef LTOOL_USE_RFL_TOML
+#define LTOOL_USE_RFL_TOML 1
+#endif
+
+#ifndef LTOOL_USE_RFL_YAML
+#define LTOOL_USE_RFL_YAML 1
 #endif
 
 #ifndef LTOOL_USE_NLOHMANN_JSON
@@ -134,6 +142,28 @@
 #else
 #define LTOOL_HAS_BUNDLED_RFL_JSON 0
 #define LTOOL_HAS_RFL_JSON 0
+#endif
+
+#if LTOOL_USE_RFL_TOML && LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE("../pkgs/rfl/toml.hpp")
+#define LTOOL_HAS_BUNDLED_RFL_TOML 1
+#define LTOOL_HAS_RFL_TOML 1
+#elif LTOOL_USE_RFL_TOML && LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE(<rfl/toml.hpp>)
+#define LTOOL_HAS_BUNDLED_RFL_TOML 0
+#define LTOOL_HAS_RFL_TOML 1
+#else
+#define LTOOL_HAS_BUNDLED_RFL_TOML 0
+#define LTOOL_HAS_RFL_TOML 0
+#endif
+
+#if LTOOL_USE_RFL_YAML && LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE("../pkgs/rfl/yaml.hpp")
+#define LTOOL_HAS_BUNDLED_RFL_YAML 1
+#define LTOOL_HAS_RFL_YAML 1
+#elif LTOOL_USE_RFL_YAML && LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE(<rfl/yaml.hpp>)
+#define LTOOL_HAS_BUNDLED_RFL_YAML 0
+#define LTOOL_HAS_RFL_YAML 1
+#else
+#define LTOOL_HAS_BUNDLED_RFL_YAML 0
+#define LTOOL_HAS_RFL_YAML 0
 #endif
 
 #if LTOOL_USE_NLOHMANN_JSON && LTOOL_HAS_INCLUDE(<nlohmann/json.hpp>)
@@ -246,4 +276,4 @@ inline constexpr const char* version_string() noexcept {
 
 } // namespace LTool
 
-#endif // LTOOL_LCONFIG_INCLUDE
+#endif // LTOOL_LTOOL_CONFIG_INCLUDE

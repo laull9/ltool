@@ -51,7 +51,7 @@
 #ifndef LSTRING_INCLUDE
 #define LSTRING_INCLUDE
 
-#include "detail/LConfig.hpp"
+#include "detail/LToolConfig.hpp"
 
 #include <algorithm>
 #include <array>

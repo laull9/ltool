@@ -36,7 +36,7 @@
 #ifndef LTOOL_LRANDOM_INCLUDE
 #define LTOOL_LRANDOM_INCLUDE
 
-#include "detail/LConfig.hpp"
+#include "detail/LToolConfig.hpp"
 
 #include <algorithm>
 #include <array>

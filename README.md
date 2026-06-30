@@ -8,7 +8,7 @@
 - 中文文本友好：`LString` 内部按 UTF-8 字节保存，边界 API 支持 GBK/GB2312、UTF-16、UTF-32、Latin1 等编码转换。
 - 常用能力打包：字符串处理、文件读写、目录遍历、路径辅助、随机数、Base64、MD5、枚举名转换和线程安全包装。
 - 尽量贴近标准库：类型和接口围绕 `std::string`、`std::filesystem::path`、`std::mutex` / `std::shared_mutex` 展开。
-- 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`。
+- 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`、`toml++` 和 `fkYAML`。
 
 ## 快速开始
 
@@ -76,15 +76,16 @@ cmake --install build/ltool
 
 ### `LTool.hpp`
 
-`LTool.hpp` 是常用组件总入口，会引入 `detail/LConfig.hpp`、`LString.hpp`、`LLog.hpp`、
+`LTool.hpp` 是常用组件总入口，会引入 `detail/LToolConfig.hpp`、`LString.hpp`、`LLog.hpp`、
 `LJson.hpp`、`LEnv.hpp`、`LTimer.hpp`、`LRandom.hpp`、`LPath.hpp`、`LFile.hpp`、`Locked.hpp` 和
-`LThreadPool.hpp`。其中 `LPath.hpp` 和 `LFile.hpp` 只在检测到 C++17 `std::filesystem` 时引入，
+`LThreadPool.hpp`。其中 `LToml.hpp`、`LYaml.hpp` 和 `LConfig.hpp` 只在 C++20 起引入，
+`LPath.hpp` 和 `LFile.hpp` 只在检测到 C++17 `std::filesystem` 时引入，
 `LThreadPool.hpp` 只在 C++17 起引入，
 `Locked.hpp` 只在检测到 C++20 concepts 时引入。
 
-### `detail/LConfig.hpp`
+### `detail/LToolConfig.hpp`
 
-`detail/LConfig.hpp` 提供 ltool 版本、C++ 标准、平台、编译器和常用特性检测宏，例如
+`detail/LToolConfig.hpp` 提供 ltool 版本、C++ 标准、平台、编译器和常用特性检测宏，例如
 `LTOOL_VERSION_STRING`、`LTOOL_HAS_CPP20`、`LTOOL_HAS_FILESYSTEM`、
 `LTOOL_PLATFORM_WINDOWS`，并提供 `LTool::version_string()`。
 
@@ -186,6 +187,63 @@ void json_example() {
     auto same_text = LJson::from(User{"Grace", 41});
     auto same_user = LJson::to<User>(same_text);
 #endif
+}
+```
+
+### `LToml.hpp` / `LYaml.hpp`
+
+`LToml` 和 `LYaml` 是 reflect-cpp 的 TOML/YAML 反射入口封装。它们提供和 `LJson` 类似的文本视图、
+拥有文本对象以及 `from<T>()` / `to<T>()` / `read_or_throw<T>()` / `write<T>()` 辅助函数。TOML 基于 rfl
+官方适配器和内置 single-header `toml++`；YAML 底层使用内置 header-only `fkYAML`，不需要额外链接
+yaml-cpp。
+
+```cpp
+#include "LToml.hpp"
+#include "LYaml.hpp"
+
+struct ServerConfig {
+    std::string host = "127.0.0.1";
+    int port = 8080;
+};
+
+void config_format_example() {
+    auto toml = LToml::Toml::from(ServerConfig{});
+    auto from_toml = toml.to<ServerConfig>();
+    LToml::TomlView toml_view = toml;
+
+    auto yaml = LYaml::Yaml::from(ServerConfig{});
+    auto from_yaml = LYaml::to<ServerConfig>(yaml);
+    LYaml::YamlView yaml_view = yaml;
+}
+```
+
+### `LConfig.hpp`
+
+`LConfig` 统一 JSON/TOML/YAML 配置读写。`load<T>()` 会按扩展名识别 `.json`、`.toml`、`.tml`、
+`.yaml` 和 `.yml`，并默认从当前目录向父目录查找配置文件；`write<T>()` / `save<T>()` 可指定输出格式。
+环境变量覆盖基于 `LEnv` 的进程环境变量 API，默认关闭，开启后按字段路径覆盖已读取的对象，前缀和顶层字段用
+`_` 连接，嵌套字段用 `__` 连接，例如 `APP_PORT`、`APP_DATABASE__HOST`。
+
+```cpp
+#include "LConfig.hpp"
+
+struct Database {
+    std::string host = "localhost";
+    int port = 5432;
+};
+
+struct AppConfig {
+    int port = 8080;
+    Database database;
+};
+
+void load_config_example() {
+    LConfig::Options options;
+    options.env.enabled = true;
+    options.env.prefix = "APP";
+
+    auto cfg = LConfig::load<AppConfig>("config.toml", options);
+    // APP_PORT=9000 and APP_DATABASE__HOST=db.local override file values.
 }
 ```
 
@@ -399,7 +457,7 @@ GBK/GB2312 转换在 Windows 上使用系统代码页 API；在 Unix-like 平台
 ```text
 .
 ├── LTool.hpp
-├── detail/LConfig.hpp
+├── detail/LToolConfig.hpp
 ├── detail/LFmt.hpp
 ├── LLog.hpp
 ├── LJson.hpp

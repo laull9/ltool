@@ -19,7 +19,7 @@
 #ifndef LTOOL_LTHREAD_POOL_INCLUDE
 #define LTOOL_LTHREAD_POOL_INCLUDE
 
-#include "detail/LConfig.hpp"
+#include "detail/LToolConfig.hpp"
 
 #if !LTOOL_HAS_THREAD_POOL
 #error "LThreadPool requires C++17 or later"

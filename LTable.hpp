@@ -27,7 +27,7 @@
 #ifndef LTOOL_LTABLE_INCLUDE
 #define LTOOL_LTABLE_INCLUDE
 
-#include "detail/LConfig.hpp"
+#include "detail/LToolConfig.hpp"
 #include "pkgs/tabulate.hpp"
 
 #include <algorithm>

@@ -6,7 +6,7 @@
 #ifndef LTOOL_LJSON_INCLUDE
 #define LTOOL_LJSON_INCLUDE
 
-#include "detail/LConfig.hpp"
+#include "detail/LToolConfig.hpp"
 
 #include <cctype>
 #include <cstddef>

@@ -21,7 +21,7 @@
 #ifndef LTOOL_LENV_INCLUDE
 #define LTOOL_LENV_INCLUDE
 
-#include "detail/LConfig.hpp"
+#include "detail/LToolConfig.hpp"
 
 #include <cctype>
 #include <cstdlib>
@@ -397,6 +397,18 @@ public:
                                std::string fallback = std::string()) {
         const char* value = std::getenv(key.c_str());
         return value ? std::string(value) : std::move(fallback);
+    }
+
+    /**
+     * @brief 获取当前进程环境变量；存在时写入 out 并返回 true。
+     */
+    static bool try_get_env(const std::string& key, std::string& out) {
+        const char* value = std::getenv(key.c_str());
+        if (!value) {
+            return false;
+        }
+        out = value;
+        return true;
     }
 
     /**

@@ -6,11 +6,18 @@
 #ifndef LTOOL_INCLUDE
 #define LTOOL_INCLUDE
 
-#include "detail/LConfig.hpp"
+#include "detail/LToolConfig.hpp"
 #include "detail/LFmt.hpp"
 #include "LString.hpp"
 #include "LLog.hpp"
 #include "LJson.hpp"
+
+#if LTOOL_HAS_CPP20
+#include "LToml.hpp"
+#include "LYaml.hpp"
+#include "LConfig.hpp"
+#endif
+
 #include "LEnv.hpp"
 #include "LTimer.hpp"
 #include "LRandom.hpp"

@@ -6,7 +6,7 @@
 #ifndef LTOOL_LLOG_INCLUDE
 #define LTOOL_LLOG_INCLUDE
 
-#include "detail/LConfig.hpp"
+#include "detail/LToolConfig.hpp"
 
 #if !LTOOL_HAS_CPP11
 #error "LLog requires C++11 or later"

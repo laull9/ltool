@@ -6,7 +6,7 @@
 #ifndef LTOOL_LFMT_INCLUDE
 #define LTOOL_LFMT_INCLUDE
 
-#include "LConfig.hpp"
+#include "LToolConfig.hpp"
 
 #if LTOOL_USE_EXTERNAL_FMT
 #include <fmt/format.h>
