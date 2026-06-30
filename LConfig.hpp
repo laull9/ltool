@@ -16,11 +16,13 @@
 #include <cctype>
 #include <charconv>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <typeindex>
 #include <vector>
 
 #if LTOOL_HAS_MAGIC_ENUM
@@ -41,23 +43,80 @@ enum class Format {
 };
 
 struct EnvOptions {
-    bool enabled = false;
-    std::string prefix;
-    std::string prefix_separator = "_";
-    std::string separator = "__";
-    bool uppercase = true;
     bool ignore_empty = false;
+    bool required = false;
+};
+
+using EnvBindOptions = EnvOptions;
+
+template<class T>
+bool load_from_env(const std::string& key, T* target,
+                   EnvBindOptions options = EnvBindOptions{});
+
+template<class T>
+bool load_from_env(const std::string& key, T& target,
+                   EnvBindOptions options = EnvBindOptions{});
+
+struct EnvBinding {
+    std::string key;
+    std::type_index root_type;
+    std::function<bool(void*)> apply;
 };
 
 struct Options {
     Format format = Format::auto_detect;
     EnvOptions env;
+    bool allow_missing_fields = true;
     bool search_parent_dirs = true;
     std::string search_start_dir;
-};
+    std::vector<EnvBinding> env_bindings;
 
-struct EnvBindOptions {
-    bool ignore_empty = false;
+    template<class Root, class Field>
+    Options& bind_env(std::string key, Field Root::* member) {
+        return bind_env(std::move(key), member, env);
+    }
+
+    template<class Root, class Field>
+    Options& bind_env(std::string key, Field Root::* member,
+                      EnvBindOptions bind_options) {
+        const auto stored_key = key;
+        env_bindings.push_back(EnvBinding{
+            std::move(key),
+            std::type_index(typeid(Root)),
+            [stored_key, member, bind_options](void* root) {
+                return LConfig::load_from_env(
+                    stored_key,
+                    &(static_cast<Root*>(root)->*member),
+                    bind_options
+                );
+            }
+        });
+        return *this;
+    }
+
+    template<class Root, class Accessor>
+    Options& bind_env(std::string key, Accessor accessor) {
+        return bind_env<Root>(std::move(key), std::move(accessor), env);
+    }
+
+    template<class Root, class Accessor>
+    Options& bind_env(std::string key, Accessor accessor,
+                      EnvBindOptions bind_options) {
+        using TargetRef = decltype(accessor(std::declval<Root&>()));
+        static_assert(std::is_lvalue_reference<TargetRef>::value,
+                      "LConfig::Options::bind_env accessor must return a field reference");
+
+        const auto stored_key = key;
+        env_bindings.push_back(EnvBinding{
+            std::move(key),
+            std::type_index(typeid(Root)),
+            [stored_key, accessor, bind_options](void* root) {
+                auto& target = accessor(*static_cast<Root*>(root));
+                return LConfig::load_from_env(stored_key, target, bind_options);
+            }
+        });
+        return *this;
+    }
 };
 
 namespace detail {
@@ -194,36 +253,6 @@ inline std::string resolve_load_path(const std::string& path, const Options& opt
     return find_file_in_parents(path, options.search_start_dir);
 }
 
-inline std::string normalize_env_part(std::string part, bool uppercase) {
-    for (char& ch : part) {
-        const auto uch = static_cast<unsigned char>(ch);
-        if (std::isalnum(uch) == 0) {
-            ch = '_';
-        } else if (uppercase) {
-            ch = static_cast<char>(std::toupper(uch));
-        }
-    }
-    return part;
-}
-
-inline std::string make_env_key(const EnvOptions& options,
-                                const std::vector<std::string>& path) {
-    std::string key = options.prefix;
-    for (std::size_t i = 0; i < path.size(); ++i) {
-        if (!key.empty()) {
-            key += (i == 0 && !options.prefix.empty()) ? options.prefix_separator
-                                                       : options.separator;
-        }
-        key += normalize_env_part(path[i], options.uppercase);
-    }
-    if (options.uppercase) {
-        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char ch) {
-            return static_cast<char>(std::toupper(ch));
-        });
-    }
-    return key;
-}
-
 inline bool parse_bool(std::string text, bool& out) {
     text = lowercase(std::move(text));
     if (text == "1" || text == "true" || text == "yes" || text == "on") {
@@ -306,6 +335,9 @@ template<class T>
 bool apply_bound_env(const std::string& key, T& target, const EnvBindOptions& options) {
     std::string text;
     if (!LEnv::try_get_env(key, text)) {
+        if (options.required) {
+            throw std::runtime_error("LConfig missing required environment variable " + key);
+        }
         return false;
     }
     if (options.ignore_empty && text.empty()) {
@@ -318,55 +350,46 @@ bool apply_bound_env(const std::string& key, T& target, const EnvBindOptions& op
 }
 
 template<class T>
-void apply_env(T& value, const EnvOptions& options, std::vector<std::string>& path);
-
-template<class T>
-void apply_env_field(T& value, const EnvOptions& options, std::vector<std::string>& path) {
-    const auto key = make_env_key(options, path);
-    std::string text;
-    if (LEnv::try_get_env(key, text)) {
-        if (!options.ignore_empty || !text.empty()) {
-            if (!assign_from_env_string(value, text)) {
-                throw std::runtime_error("LConfig failed to parse environment variable " + key);
-            }
+void apply_env_bindings(T& value, const Options& options) {
+    for (const auto& binding : options.env_bindings) {
+        if (binding.root_type != std::type_index(typeid(T))) {
+            throw std::invalid_argument("LConfig environment binding root type does not match load<T>()");
         }
-    }
-
-    using Value = std::remove_cv_t<std::remove_reference_t<T>>;
-    if constexpr (std::is_class<Value>::value &&
-                  !is_std_string<Value>::value &&
-                  !is_optional<Value>::value &&
-                  !is_vector<Value>::value) {
-        apply_env(value, options, path);
+        binding.apply(&value);
     }
 }
 
 template<class T>
-void apply_env(T& value, const EnvOptions& options, std::vector<std::string>& path) {
-    if (!options.enabled) {
-        return;
-    }
-    auto view = rfl::to_view(value);
-    view.apply([&](auto field) {
-        using Field = std::remove_cv_t<std::remove_reference_t<decltype(field)>>;
-        auto* ptr = field.value();
-        path.push_back(std::string(Field::name()));
-        apply_env_field(*ptr, options, path);
-        path.pop_back();
-    });
-}
-
-template<class T>
-T parse_text(const std::string& text, Format format) {
+T parse_text(const std::string& text, Format format, bool allow_missing_fields) {
     switch (format) {
     case Format::json:
+#if LTOOL_HAS_RFL_JSON
+        if (allow_missing_fields) {
+            return rfl::json::read<T, rfl::DefaultIfMissing>(text).value();
+        }
+#endif
         return LJson::read_or_throw<T>(text);
     case Format::toml:
+#if LTOOL_HAS_RFL_TOML
+        if (allow_missing_fields) {
+            return rfl::toml::read<T, rfl::DefaultIfMissing>(text).value();
+        }
+#endif
         return LToml::read_or_throw<T>(text);
     case Format::yaml:
+#if LTOOL_HAS_RFL_YAML
+        if (allow_missing_fields) {
+            return rfl::yaml::read<T, rfl::DefaultIfMissing>(text).value();
+        }
+#endif
         return LYaml::read_or_throw<T>(text);
     case Format::auto_detect:
     default:
+#if LTOOL_HAS_RFL_JSON
+        if (allow_missing_fields) {
+            return rfl::json::read<T, rfl::DefaultIfMissing>(text).value();
+        }
+#endif
         return LJson::read_or_throw<T>(text);
     }
 }
@@ -414,9 +437,8 @@ inline const char* format_name(Format format) noexcept {
 template<class T>
 T read(const std::string& text, Options options = Options{}) {
     const auto format = detail::resolve_format(options.format);
-    T value = detail::parse_text<T>(text, format);
-    std::vector<std::string> path;
-    detail::apply_env(value, options.env, path);
+    T value = detail::parse_text<T>(text, format, options.allow_missing_fields);
+    detail::apply_env_bindings(value, options);
     return value;
 }
 
@@ -424,32 +446,25 @@ template<class T>
 T load(const std::string& path, Options options = Options{}) {
     const auto resolved_path = detail::resolve_load_path(path, options);
     const auto format = detail::resolve_format(options.format, resolved_path);
-    T value = detail::parse_text<T>(detail::read_file_text(resolved_path), format);
-    std::vector<std::string> env_path;
-    detail::apply_env(value, options.env, env_path);
+    T value = detail::parse_text<T>(
+        detail::read_file_text(resolved_path),
+        format,
+        options.allow_missing_fields
+    );
+    detail::apply_env_bindings(value, options);
     return value;
 }
 
 template<class T>
-T load_with_env(const std::string& path, std::string prefix = std::string(),
-                Format format = Format::auto_detect) {
-    Options options;
-    options.format = format;
-    options.env.enabled = true;
-    options.env.prefix = std::move(prefix);
-    return load<T>(path, options);
-}
-
-template<class T>
-bool bind_env(const std::string& key, T* target, EnvBindOptions options = EnvBindOptions{}) {
+bool load_from_env(const std::string& key, T* target, EnvBindOptions options) {
     if (!target) {
-        throw std::invalid_argument("LConfig::bind_env target cannot be null");
+        throw std::invalid_argument("LConfig::load_from_env target cannot be null");
     }
     return detail::apply_bound_env(key, *target, options);
 }
 
 template<class T>
-bool bind_env(const std::string& key, T& target, EnvBindOptions options = EnvBindOptions{}) {
+bool load_from_env(const std::string& key, T& target, EnvBindOptions options) {
     return detail::apply_bound_env(key, target, options);
 }
 
