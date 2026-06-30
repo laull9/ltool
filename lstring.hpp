@@ -2897,6 +2897,29 @@ public:
     }
 };
 
+/// rfl 适配：让 LString 在 rfl 的 JSON/TOML/YAML 反射中按 std::string 处理。
+namespace rfl {
+template<typename T>
+struct Reflector;
+
+template<>
+struct Reflector<LString> {
+    using ReflType = std::string;
+
+    static LString to(const std::string& value) {
+        return LString(value);
+    }
+
+    static LString to(std::string&& value) {
+        return LString(std::move(value));
+    }
+
+    static const std::string& from(const LString& value) noexcept {
+        return value.str();
+    }
+};
+} // namespace rfl
+
 /// PascalCase 别名，供偏好类型命名风格的代码使用。
 
 /// 用户自定义字面量，用于从字符串字面量简洁构造 LString。
