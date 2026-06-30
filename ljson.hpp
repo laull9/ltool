@@ -161,7 +161,103 @@ inline std::string yyjson_to_string(yyjson_mut_val* value,
     size_t size = 0;
     return take_yyjson_string(yyjson_mut_val_write(value, flags, &size), size);
 }
+
+inline bool yyjson_native_write_flags(int indent, yyjson_write_flag& flags) {
+    if (indent <= 0) {
+        flags = YYJSON_WRITE_NOFLAG;
+        return true;
+    }
+    if (indent == 2) {
+        flags = YYJSON_WRITE_PRETTY_TWO_SPACES;
+        return true;
+    }
+    if (indent == 4) {
+        flags = YYJSON_WRITE_PRETTY;
+        return true;
+    }
+    return false;
+}
 #endif
+
+inline void append_json_indent(std::string& out, std::size_t level, int indent) {
+    out.append(level * static_cast<std::size_t>(indent), ' ');
+}
+
+inline std::string format_json_with_indent(const std::string& text, int indent) {
+    if (indent <= 0) {
+        return text;
+    }
+
+    std::string out;
+    out.reserve(text.size() + text.size() / 2);
+
+    std::size_t level = 0;
+    bool in_string = false;
+    bool escaped = false;
+
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const char ch = text[i];
+
+        if (in_string) {
+            out.push_back(ch);
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+
+        switch (ch) {
+        case '"':
+            in_string = true;
+            out.push_back(ch);
+            break;
+        case '{':
+        case '[': {
+            out.push_back(ch);
+            const char close = ch == '{' ? '}' : ']';
+            if (i + 1 < text.size() && text[i + 1] != close) {
+                ++level;
+                out.push_back('\n');
+                append_json_indent(out, level, indent);
+            }
+            break;
+        }
+        case '}':
+        case ']': {
+            const char open = ch == '}' ? '{' : '[';
+            if (i > 0 && text[i - 1] != open) {
+                if (level > 0) {
+                    --level;
+                }
+                out.push_back('\n');
+                append_json_indent(out, level, indent);
+            }
+            out.push_back(ch);
+            break;
+        }
+        case ',':
+            out.push_back(ch);
+            out.push_back('\n');
+            append_json_indent(out, level, indent);
+            break;
+        case ':':
+            out.push_back(ch);
+            out.push_back(' ');
+            break;
+        default:
+            if (std::isspace(static_cast<unsigned char>(ch)) == 0) {
+                out.push_back(ch);
+            }
+            break;
+        }
+    }
+
+    return out;
+}
 
 } // namespace detail
 
@@ -447,15 +543,15 @@ private:
 
     std::string write_current(int indent = -1) const {
         auto* value = const_value();
-        const auto flags = indent >= 0 ? YYJSON_WRITE_PRETTY : YYJSON_WRITE_NOFLAG;
-        std::size_t size = 0;
-        char* data = yyjson_mut_val_write(value, flags, &size);
-        if (!data) {
-            throw std::runtime_error("yyjson failed to write JSON");
+        yyjson_write_flag flags = YYJSON_WRITE_NOFLAG;
+        if (detail::yyjson_native_write_flags(indent, flags)) {
+            return detail::yyjson_to_string(value, flags);
         }
-        std::string out(data, size);
-        std::free(data);
-        return out;
+
+        return detail::format_json_with_indent(
+            detail::yyjson_to_string(value, YYJSON_WRITE_NOFLAG),
+            indent
+        );
     }
 
     void replace_current(yyjson_mut_val* value) {

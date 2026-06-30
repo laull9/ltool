@@ -221,8 +221,8 @@ void config_format_example() {
 
 `LConfig` 统一 JSON/TOML/YAML 配置读写。`load<T>()` 会按扩展名识别 `.json`、`.toml`、`.tml`、
 `.yaml` 和 `.yml`，并默认从当前目录向父目录查找配置文件；`write<T>()` / `save<T>()` 可指定输出格式。
-环境变量覆盖基于 `LEnv` 的进程环境变量 API，默认关闭，开启后按字段路径覆盖已读取的对象，前缀和顶层字段用
-`_` 连接，嵌套字段用 `__` 连接，例如 `APP_PORT`、`APP_DATABASE__HOST`。
+环境变量覆盖基于 `LEnv` 的进程环境变量 API，推荐用 `bind_env()` 显式绑定到具体字段，避免嵌套配置被字段名规则
+隐式覆盖。
 
 ```cpp
 #include "LConfig.hpp"
@@ -238,12 +238,10 @@ struct AppConfig {
 };
 
 void load_config_example() {
-    LConfig::Options options;
-    options.env.enabled = true;
-    options.env.prefix = "APP";
+    auto cfg = LConfig::load<AppConfig>("config.toml");
 
-    auto cfg = LConfig::load<AppConfig>("config.toml", options);
-    // APP_PORT=9000 and APP_DATABASE__HOST=db.local override file values.
+    LConfig::bind_env("APP_PORT", &cfg.port);
+    LConfig::bind_env("APP_DATABASE_HOST", &cfg.database.host);
 }
 ```
 

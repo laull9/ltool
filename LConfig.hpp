@@ -56,6 +56,10 @@ struct Options {
     std::string search_start_dir;
 };
 
+struct EnvBindOptions {
+    bool ignore_empty = false;
+};
+
 namespace detail {
 
 template<class>
@@ -299,6 +303,21 @@ bool assign_from_env_string(T& out, const std::string& text) {
 }
 
 template<class T>
+bool apply_bound_env(const std::string& key, T& target, const EnvBindOptions& options) {
+    std::string text;
+    if (!LEnv::try_get_env(key, text)) {
+        return false;
+    }
+    if (options.ignore_empty && text.empty()) {
+        return true;
+    }
+    if (!assign_from_env_string(target, text)) {
+        throw std::runtime_error("LConfig failed to parse environment variable " + key);
+    }
+    return true;
+}
+
+template<class T>
 void apply_env(T& value, const EnvOptions& options, std::vector<std::string>& path);
 
 template<class T>
@@ -419,6 +438,19 @@ T load_with_env(const std::string& path, std::string prefix = std::string(),
     options.env.enabled = true;
     options.env.prefix = std::move(prefix);
     return load<T>(path, options);
+}
+
+template<class T>
+bool bind_env(const std::string& key, T* target, EnvBindOptions options = EnvBindOptions{}) {
+    if (!target) {
+        throw std::invalid_argument("LConfig::bind_env target cannot be null");
+    }
+    return detail::apply_bound_env(key, *target, options);
+}
+
+template<class T>
+bool bind_env(const std::string& key, T& target, EnvBindOptions options = EnvBindOptions{}) {
+    return detail::apply_bound_env(key, target, options);
 }
 
 template<class T>
