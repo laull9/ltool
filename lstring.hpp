@@ -21,10 +21,10 @@
  * - 路径：标准库支持 std::filesystem 时启用 filename/stem/extension 等路径辅助。
  * - 数字转换：标准库支持 std::optional/from_chars 时启用 to_int/to_double 等接口。
  * - Range/Span：C++20 起启用 char range 构造、append_range、assign_range、bytes()。
- * - 哈希与编码小工具：std::hash、Base64 编解码、MD5 十六进制和 16 字节摘要。
+ * - 哈希与编码小工具：std::hash、Base64 编解码、MD5/SHA-256 摘要。
  *
  * C++ 标准兼容：
- * - C++11：保留核心字符串、fmt、编码转换、Base64、MD5、hash、regex_contains、
+ * - C++11：保留核心字符串、fmt、编码转换、Base64、MD5、SHA-256、hash、regex_contains、
  *   regex_find_all、regex_replace 等基础子集。
  * - C++17+：启用 std::optional/string_view/filesystem 相关接口。
  * - C++20+：启用 ranges/span/std::format/<=> 等现代接口。
@@ -41,6 +41,7 @@
  *
  * auto b64 = LString("hello").base64_encoded();   // "aGVsbG8="
  * auto md5 = LString("abc").md5();                // "900150983cd24fb0d6963f7d28e17f72"
+ * auto sha = LString("abc").sha256();             // "ba7816bf..."
  *
  * enum class Color { Red, Blue };
  * auto name = LString(Color::Red);                 // "Red"，启用 magic_enum 时
@@ -53,6 +54,9 @@
 
 #include "detail/LToolConfig.hpp"
 #include "detail/LConcepts.hpp"
+#include "detail/LBase64.hpp"
+#include "detail/LMd5.hpp"
+#include "detail/LSha256.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1001,261 +1005,57 @@ inline bool can_decode_legacy(LStringDetail::string_view input, LEncoding encodi
 
 /// 返回 Base64 编码表。
 inline const char* base64_table() noexcept {
-    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    return LTool::detail::base64_table();
 }
 
 /// 判断字节是否为 Base64 解码时可忽略的 ASCII 空白。
 inline bool is_base64_space(char ch) noexcept {
-    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v';
+    return LTool::detail::is_base64_space(ch);
 }
 
 /// 将单个 Base64 字符映射为 6 位值；非法字符返回 -1。
 inline int base64_value(char ch) noexcept {
-    if (ch >= 'A' && ch <= 'Z') {
-        return ch - 'A';
-    }
-    if (ch >= 'a' && ch <= 'z') {
-        return ch - 'a' + 26;
-    }
-    if (ch >= '0' && ch <= '9') {
-        return ch - '0' + 52;
-    }
-    if (ch == '+') {
-        return 62;
-    }
-    if (ch == '/') {
-        return 63;
-    }
-    return -1;
+    return LTool::detail::base64_value(ch);
 }
 
 /// 将任意字节编码为标准 Base64 文本。
 inline std::string base64_encode(LStringDetail::string_view bytes) {
-    const char* table = base64_table();
-    std::string out;
-    out.reserve(((bytes.size() + 2) / 3) * 4);
-
-    for (std::size_t i = 0; i < bytes.size(); i += 3) {
-        auto b0 = static_cast<unsigned char>(bytes[i]);
-        auto b1 = i + 1 < bytes.size() ? static_cast<unsigned char>(bytes[i + 1]) : 0;
-        auto b2 = i + 2 < bytes.size() ? static_cast<unsigned char>(bytes[i + 2]) : 0;
-
-        out.push_back(table[(b0 >> 2) & 0x3F]);
-        out.push_back(table[((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0F)]);
-        out.push_back(i + 1 < bytes.size() ? table[((b1 & 0x0F) << 2) | ((b2 >> 6) & 0x03)] : '=');
-        out.push_back(i + 2 < bytes.size() ? table[b2 & 0x3F] : '=');
-    }
-
-    return out;
+    return LTool::detail::base64_encode(bytes.data(), bytes.size());
 }
 
 /// 解码 Base64 文本；strict 为 true 时遇到非法字符或非法填充会抛出异常。
 inline std::string base64_decode(LStringDetail::string_view encoded, bool strict) {
-    std::string clean;
-    clean.reserve(encoded.size());
-
-    for (std::size_t i = 0; i < encoded.size(); ++i) {
-        char ch = encoded[i];
-        if (is_base64_space(ch)) {
-            continue;
-        }
-        if (ch == '=' || base64_value(ch) >= 0) {
-            clean.push_back(ch);
-            continue;
-        }
-        if (strict) {
-            throw std::runtime_error("invalid Base64 character");
-        }
-    }
-
-    if (clean.empty()) {
-        return {};
-    }
-    if (clean.size() % 4 == 1) {
-        if (strict) {
-            throw std::runtime_error("invalid Base64 length");
-        }
-        return {};
-    }
-    while (clean.size() % 4 != 0) {
-        clean.push_back('=');
-    }
-
-    std::string out;
-    out.reserve((clean.size() / 4) * 3);
-
-    for (std::size_t i = 0; i < clean.size(); i += 4) {
-        int vals[4] = {0, 0, 0, 0};
-        int padding = 0;
-
-        for (int j = 0; j < 4; ++j) {
-            char ch = clean[i + static_cast<std::size_t>(j)];
-            if (ch == '=') {
-                ++padding;
-                vals[j] = 0;
-                continue;
-            }
-            if (padding > 0 && strict) {
-                throw std::runtime_error("invalid Base64 padding");
-            }
-            vals[j] = base64_value(ch);
-            if (vals[j] < 0) {
-                if (strict) {
-                    throw std::runtime_error("invalid Base64 character");
-                }
-                vals[j] = 0;
-            }
-        }
-
-        if (padding > 0 && i + 4 != clean.size() && strict) {
-            throw std::runtime_error("Base64 padding before final block");
-        }
-        if (padding > 2 && strict) {
-            throw std::runtime_error("invalid Base64 padding");
-        }
-        if (strict) {
-            if (clean[i + 2] == '=' && (vals[1] & 0x0F) != 0) {
-                throw std::runtime_error("invalid Base64 padding bits");
-            }
-            if (clean[i + 2] != '=' && clean[i + 3] == '=' && (vals[2] & 0x03) != 0) {
-                throw std::runtime_error("invalid Base64 padding bits");
-            }
-        }
-
-        out.push_back(static_cast<char>((vals[0] << 2) | (vals[1] >> 4)));
-        if (clean[i + 2] != '=') {
-            out.push_back(static_cast<char>(((vals[1] & 0x0F) << 4) | (vals[2] >> 2)));
-        }
-        if (clean[i + 3] != '=') {
-            out.push_back(static_cast<char>(((vals[2] & 0x03) << 6) | vals[3]));
-        }
-    }
-
-    return out;
+    return LTool::detail::base64_decode(encoded.data(), encoded.size(), strict);
 }
 
 /// MD5 使用的循环左移。
 inline std::uint32_t md5_rotate_left(std::uint32_t value, std::uint32_t shift) noexcept {
-    return (value << shift) | (value >> (32 - shift));
+    return LTool::detail::md5_rotate_left(value, shift);
 }
 
 /// 计算 MD5 的 16 字节摘要。
 inline std::array<unsigned char, 16> md5_digest(LStringDetail::string_view input) {
-    static const std::uint32_t shifts[64] = {
-        7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
-        5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
-        4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
-        6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
-    };
-    static const std::uint32_t constants[64] = {
-        0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
-        0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
-        0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be,
-        0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
-        0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa,
-        0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
-        0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed,
-        0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
-        0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c,
-        0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
-        0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05,
-        0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
-        0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039,
-        0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
-        0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1,
-        0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
-    };
-
-    std::vector<unsigned char> message(input.begin(), input.end());
-    std::uint64_t bit_length = static_cast<std::uint64_t>(message.size()) * 8;
-
-    message.push_back(0x80);
-    while ((message.size() % 64) != 56) {
-        message.push_back(0);
-    }
-    for (int i = 0; i < 8; ++i) {
-        message.push_back(static_cast<unsigned char>((bit_length >> (8 * i)) & 0xFF));
-    }
-
-    std::uint32_t a0 = 0x67452301;
-    std::uint32_t b0 = 0xefcdab89;
-    std::uint32_t c0 = 0x98badcfe;
-    std::uint32_t d0 = 0x10325476;
-
-    for (std::size_t offset = 0; offset < message.size(); offset += 64) {
-        std::uint32_t words[16] = {};
-        for (int i = 0; i < 16; ++i) {
-            std::size_t j = offset + static_cast<std::size_t>(i) * 4;
-            words[i] = static_cast<std::uint32_t>(message[j]) |
-                       (static_cast<std::uint32_t>(message[j + 1]) << 8) |
-                       (static_cast<std::uint32_t>(message[j + 2]) << 16) |
-                       (static_cast<std::uint32_t>(message[j + 3]) << 24);
-        }
-
-        std::uint32_t a = a0;
-        std::uint32_t b = b0;
-        std::uint32_t c = c0;
-        std::uint32_t d = d0;
-
-        for (std::uint32_t i = 0; i < 64; ++i) {
-            std::uint32_t f = 0;
-            std::uint32_t g = 0;
-
-            if (i < 16) {
-                f = (b & c) | ((~b) & d);
-                g = i;
-            } else if (i < 32) {
-                f = (d & b) | ((~d) & c);
-                g = (5 * i + 1) % 16;
-            } else if (i < 48) {
-                f = b ^ c ^ d;
-                g = (3 * i + 5) % 16;
-            } else {
-                f = c ^ (b | (~d));
-                g = (7 * i) % 16;
-            }
-
-            auto temp = d;
-            d = c;
-            c = b;
-            b = b + md5_rotate_left(a + f + constants[i] + words[g], shifts[i]);
-            a = temp;
-        }
-
-        a0 += a;
-        b0 += b;
-        c0 += c;
-        d0 += d;
-    }
-
-    std::array<unsigned char, 16> digest {};
-    std::uint32_t state[4] = {a0, b0, c0, d0};
-    for (int i = 0; i < 4; ++i) {
-        digest[static_cast<std::size_t>(i) * 4] = static_cast<unsigned char>(state[i] & 0xFF);
-        digest[static_cast<std::size_t>(i) * 4 + 1] = static_cast<unsigned char>((state[i] >> 8) & 0xFF);
-        digest[static_cast<std::size_t>(i) * 4 + 2] = static_cast<unsigned char>((state[i] >> 16) & 0xFF);
-        digest[static_cast<std::size_t>(i) * 4 + 3] = static_cast<unsigned char>((state[i] >> 24) & 0xFF);
-    }
-    return digest;
+    return LTool::detail::md5_digest(input.data(), input.size());
 }
 
 /// 将二进制摘要转换为小写十六进制文本。
 inline std::string bytes_to_hex(const unsigned char* bytes, std::size_t size) {
-    static const char* hex = "0123456789abcdef";
-    std::string out;
-    out.reserve(size * 2);
-    for (std::size_t i = 0; i < size; ++i) {
-        auto value = bytes[i];
-        out.push_back(hex[(value >> 4) & 0x0F]);
-        out.push_back(hex[value & 0x0F]);
-    }
-    return out;
+    return LTool::detail::hex_lower(bytes, size);
 }
 
 /// 将 MD5 的 16 字节摘要转换为小写十六进制文本。
 inline std::string md5_hex(LStringDetail::string_view input) {
-    auto digest = md5_digest(input);
-    return bytes_to_hex(digest.data(), digest.size());
+    return LTool::detail::md5_hex(input.data(), input.size());
+}
+
+/// 计算 SHA-256 的 32 字节摘要。
+inline std::array<unsigned char, 32> sha256_digest(LStringDetail::string_view input) {
+    return LTool::detail::sha256_digest(input.data(), input.size());
+}
+
+/// 将 SHA-256 的 32 字节摘要转换为小写十六进制文本。
+inline std::string sha256_hex(LStringDetail::string_view input) {
+    return LTool::detail::sha256_hex(input.data(), input.size());
 }
 
 /// 将 std::string 适配为 string_view，供通用拼接类 API 使用。
@@ -2885,6 +2685,26 @@ public:
     /// 计算任意字节的 16 字节 MD5 二进制摘要。
     static std::array<unsigned char, 16> md5_digest(LStringDetail::string_view bytes) {
         return LStringDetail::md5_digest(bytes);
+    }
+
+    /// 返回当前存储字节的 SHA-256 摘要，格式为 64 位小写十六进制文本。
+    LString sha256() const {
+        return LStringDetail::sha256_hex(view());
+    }
+
+    /// 返回当前存储字节的 32 字节 SHA-256 二进制摘要。
+    std::array<unsigned char, 32> sha256_digest() const {
+        return LStringDetail::sha256_digest(view());
+    }
+
+    /// 计算任意字节的 SHA-256 摘要，格式为 64 位小写十六进制文本。
+    static LString sha256(LStringDetail::string_view bytes) {
+        return LStringDetail::sha256_hex(bytes);
+    }
+
+    /// 计算任意字节的 32 字节 SHA-256 二进制摘要。
+    static std::array<unsigned char, 32> sha256_digest(LStringDetail::string_view bytes) {
+        return LStringDetail::sha256_digest(bytes);
     }
 
     /// 使用当前标准下可用的标准哈希器对存储字节求哈希。

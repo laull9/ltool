@@ -15,8 +15,11 @@
 #define LFILE_INCLUDE
 
 #include "detail/LConcepts.hpp"
+#include "detail/LSha256.hpp"
 #include "LPath.hpp"
 
+#include <array>
+#include <cstddef>
 #include <fstream>
 #include <ios>
 #include <iterator>
@@ -78,6 +81,28 @@ inline std::string read_all_bytes(const std::filesystem::path& path) {
         }
     }
     return out;
+}
+
+inline std::string sha256_file(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        throw LPathDetail::make_error("cannot open file for reading", path);
+    }
+
+    LTool::detail::Sha256 sha256;
+    std::array<char, 8192> buffer {};
+
+    while (file) {
+        file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        auto count = file.gcount();
+        if (count > 0) {
+            sha256.update(buffer.data(), static_cast<std::size_t>(count));
+        }
+    }
+    if (file.bad()) {
+        throw LPathDetail::make_error("cannot read file", path);
+    }
+    return sha256.final_hex();
 }
 
 inline void write_all_bytes(const std::filesystem::path& path, LStringDetail::string_view bytes,
@@ -511,6 +536,10 @@ public:
         return move_to(to);
     }
 
+    std::string sha256() const {
+        return sha256(path());
+    }
+
     friend bool operator==(const LFile& lhs, const LFile& rhs) noexcept {
         return lhs.path_ == rhs.path_;
     }
@@ -850,7 +879,11 @@ public:
         return file;
     }
 
-    std::size_t hash() const noexcept {
+    static std::string sha256(const std::filesystem::path& path) {
+        return LFileDetail::sha256_file(path);
+    }
+
+    std::size_t path_hash() const noexcept {
         return path_.hash();
     }
 };
@@ -871,7 +904,7 @@ typename FormatContext::iterator formatter<LFile, Char, void>::format(
 template<>
 struct std::hash<LFile> {
     std::size_t operator()(const LFile& value) const noexcept {
-        return value.hash();
+        return value.path_hash();
     }
 };
 

@@ -28,6 +28,7 @@ int main() {
     out.write_lines(std::vector<LString>{
         LString::format("name = {}", title),
         LString("abc").md5(),
+        LString("abc").sha256(),
     });
 
     Locked<int> counter(0);
@@ -260,7 +261,7 @@ void load_config_example() {
 - 正则：`regex_contains()`、`regex_find()`、`regex_find_all()`、`regex_replace()`；检测到 RE2 时优先使用 RE2，否则使用 `std::regex`。
 - 数字转换：C++17 起提供 `to_int()`、`to_i64()`、`to_double()`。
 - 枚举辅助：检测到 `magic_enum` 时，可把枚举值转成名称，也可用 `to_enum<T>()` 从文本解析。
-- 工具函数：Base64 编解码、MD5、路径名辅助、`std::hash<LString>`。
+- 工具函数：Base64 编解码、MD5、SHA-256、路径名辅助、`std::hash<LString>`。
 
 示例：
 
@@ -279,6 +280,7 @@ void string_example() {
 
     auto b64 = LString("hello").base64_encoded();   // "aGVsbG8="
     auto md5 = LString("abc").md5();                // "900150983cd24fb0d6963f7d28e17f72"
+    auto sha = LString("abc").sha256();             // "ba7816bf..."
 
     auto color = LString("blue").to_enum<Color>(false);
 }
@@ -324,6 +326,7 @@ void path_example() {
 - 内容查找替换：`contains()`、`find()`、`replace_all()`、`regex_contains()`、`regex_find_all()`、`regex_replace()`；原始字节可用 `bytes_find()`、`replace_bytes_all()`。
 - 流和随机访问：`open_input()`、`open_output()`、`open_stream()`、`read_bytes_at()`、`read_bytes_from()`、`write_bytes_at()`、`seekg()`、`seekp()`、`tellg()`、`tellp()`。
 - 文件操作：`touch()`、`copy_to()`、`move_to()`、`remove()`。
+- 哈希：`path_hash()` 按路径求标准库哈希，`sha256()` 按文件内容返回 SHA-256 十六进制摘要。
 - 临时文件：`create_temp_file()`。
 
 示例：
@@ -340,6 +343,7 @@ void file_example() {
 
     auto tmp = LFile::create_temp_file("ltool-", ".txt");
     tmp.write_text("temporary text");
+    auto digest = tmp.sha256();
 }
 ```
 
