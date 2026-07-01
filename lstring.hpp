@@ -68,8 +68,9 @@
 #include <functional>
 #include <initializer_list>
 #include <iterator>
-#include <ostream>
+#include <iostream>
 #include <regex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -344,6 +345,13 @@ struct remove_cvref {
 template<class T>
 using remove_cvref_t = typename remove_cvref<T>::type;
 #endif // __cplusplus >= 202002L
+
+template<class T, class = void>
+struct is_char_iterator : std::false_type {};
+
+template<class T>
+struct is_char_iterator<T, LTool::traits::void_t<typename std::iterator_traits<T>::value_type>>
+    : std::is_same<remove_cvref_t<typename std::iterator_traits<T>::value_type>, char> {};
 
 template<class T>
 struct is_char_pointer
@@ -1134,13 +1142,7 @@ public:
 
     /// 从带显式长度的字节缓冲区构造。
     LString(const char* value, size_type count) {
-        if (!value) {
-            if (count != 0) {
-                throw std::invalid_argument("LString cannot copy non-empty null data");
-            }
-            return;
-        }
-        data_.assign(value, count);
+        assign(value, count);
     }
 
     /// 构造包含 @p count 个 @p value 字节的字符串。
@@ -1470,6 +1472,153 @@ public:
         return data_.crend();
     }
 
+    /// 从另一个 LString 复制全部字节。
+    LString& assign(const LString& value) {
+        data_ = value.data_;
+        return *this;
+    }
+
+    /// 从另一个 LString 移动全部字节。
+    LString& assign(LString&& value) {
+        data_ = std::move(value.data_);
+        return *this;
+    }
+
+    /// 从另一个 LString 的子串复制字节。
+    LString& assign(const LString& value, size_type pos, size_type count = npos) {
+        data_.assign(value.data_, pos, count);
+        return *this;
+    }
+
+    /// 从 std::string 复制全部字节。
+    LString& assign(const std::string& value) {
+        data_ = value;
+        return *this;
+    }
+
+    /// 从 std::string 移动全部字节。
+    LString& assign(std::string&& value) {
+        data_ = std::move(value);
+        return *this;
+    }
+
+    /// 从 std::string 的子串复制字节。
+    LString& assign(const std::string& value, size_type pos, size_type count = npos) {
+        data_.assign(value, pos, count);
+        return *this;
+    }
+
+    /// 从 string_view 复制全部字节。
+    LString& assign(LStringDetail::string_view value) {
+        data_.assign(value.data(), value.size());
+        return *this;
+    }
+
+    /// 从 string_view 的子串复制字节。
+    LString& assign(LStringDetail::string_view value, size_type pos, size_type count = npos) {
+        auto sub = value.substr(pos, count);
+        return assign(sub);
+    }
+
+    /// 从以 NUL 结尾的 C 字符串赋值；nullptr 视为空字符串。
+    LString& assign(const char* value) {
+        data_ = value ? value : "";
+        return *this;
+    }
+
+    /// 从带显式长度的字节缓冲区复制；非零长度的 nullptr 会抛出 std::invalid_argument。
+    LString& assign(const char* value, size_type count) {
+        if (!value) {
+            if (count != 0) {
+                throw std::invalid_argument("LString cannot copy non-empty null data");
+            }
+            data_.clear();
+            return *this;
+        }
+        data_.assign(value, count);
+        return *this;
+    }
+
+    /// 从以 NUL 结尾的 C 字符串子串复制字节；nullptr 视为空字符串。
+    LString& assign(const char* value, size_type pos, size_type count) {
+        return assign(LStringDetail::string_view(value ? value : ""), pos, count);
+    }
+
+    /// 赋值为 @p count 个 @p value 字节。
+    LString& assign(size_type count, char value) {
+        data_.assign(count, value);
+        return *this;
+    }
+
+    /// 赋值为单个字节。
+    LString& assign(char value) {
+        data_.assign(1, value);
+        return *this;
+    }
+
+    /// 从 char 迭代器区间复制字节。
+    template<class InputIt LTOOL_ENABLE_IF(LStringDetail::is_char_iterator<InputIt>::value)>
+        LTOOL_REQUIRES(LStringDetail::is_char_iterator<InputIt>::value)
+    LString& assign(InputIt first, InputIt last) {
+        data_.assign(first, last);
+        return *this;
+    }
+
+    /// 从 initializer_list 复制字节。
+    LString& assign(std::initializer_list<char> value) {
+        data_.assign(value.begin(), value.end());
+        return *this;
+    }
+
+#if LSTRING_HAS_FILESYSTEM
+    /// 使用 path::string() 从文件系统路径赋值。
+    LString& assign(const std::filesystem::path& path) {
+        data_ = path.string();
+        return *this;
+    }
+#endif // LSTRING_HAS_FILESYSTEM
+
+    /// 将宽字符串转换为内部 UTF-8 存储后赋值。
+    LString& assign(LStringDetail::wstring_view value) {
+        data_ = from_wstring(value).data_;
+        return *this;
+    }
+
+#if LSTRING_HAS_MAGIC_ENUM
+    /// 使用 magic_enum 将枚举值序列化为枚举项名称并赋值；未知值得到空字符串。
+    template<class E LTOOL_ENABLE_IF(std::is_enum<LStringDetail::remove_cvref_t<E>>::value)>
+        LTOOL_REQUIRES(LTool::concepts::Enum<LStringDetail::remove_cvref_t<E>>)
+    LString& assign(E value) {
+        data_ = std::string(magic_enum::enum_name(value));
+        return *this;
+    }
+#endif // LSTRING_HAS_MAGIC_ENUM
+
+#if LSTRING_HAS_RANGES
+    /// 使用 fmt 将任意可格式化对象字符串化后赋值。
+    template<class T>
+        requires fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
+                 (!LStringDetail::is_LString_text_source<T>::value) &&
+                 (!LStringDetail::is_magic_enum_source<T>::value) &&
+                 (!std::same_as<LStringDetail::remove_cvref_t<T>, LString>) &&
+                 (!LStringDetail::CharRange<T>)
+    LString& assign(const T& value) {
+        data_ = fmt::format("{}", value);
+        return *this;
+    }
+#else
+    /// 使用 fmt 将任意可格式化对象字符串化后赋值。
+    template<class T
+             LTOOL_ENABLE_IF(fmt::is_formattable<LStringDetail::remove_cvref_t<T>, char>::value &&
+                             !LStringDetail::is_LString_text_source<T>::value &&
+                             !LStringDetail::is_magic_enum_source<T>::value &&
+                             !std::is_same<LStringDetail::remove_cvref_t<T>, LString>::value)>
+    LString& assign(const T& value) {
+        data_ = fmt::format("{}", value);
+        return *this;
+    }
+#endif // LSTRING_HAS_RANGES
+
     /// 从 string_view 追加原始字节，并返回 *this 以便链式调用。
     LString& append(LStringDetail::string_view value) {
         data_.append(value);
@@ -1596,6 +1745,63 @@ public:
     /// 将存储字节写入 ostream。
     friend std::ostream& operator<<(std::ostream& os, const LString& value) {
         return os.write(value.data(), static_cast<std::streamsize>(value.size()));
+    }
+
+    /// 从 istream 读取一个空白分隔的 token，行为对齐 std::string 的 operator>>。
+    friend std::istream& operator>>(std::istream& is, LString& s) {
+        std::string buffer;
+        if (is >> buffer) {
+            s.assign(std::move(buffer));
+        }
+        return is;
+    }
+
+    /// 从输入流读取一行到当前对象；返回输入流以便和 std::getline 一样检查状态。
+    std::istream& read_line(std::istream& is, char delimiter = '\n') {
+        std::getline(is, data_, delimiter);
+        return is;
+    }
+
+    /// 读取输入流剩余全部字节到当前对象。
+    std::istream& read_all(std::istream& is) {
+        std::ostringstream out;
+        out << is.rdbuf();
+        data_ = out.str();
+        return is;
+    }
+
+    /// 从输入流读取一行并返回新的 LString。
+    static LString line_from(std::istream& is, char delimiter = '\n') {
+        LString out;
+        out.read_line(is, delimiter);
+        return out;
+    }
+
+    /// 从输入流读取剩余全部字节并返回新的 LString。
+    static LString all_from(std::istream& is) {
+        LString out;
+        out.read_all(is);
+        return out;
+    }
+
+    /// 支持 unqualified getline(is, lstring)；qualified std::getline 不能合法扩展到用户类型。
+    friend std::istream& getline(std::istream& is, LString& value) {
+        return value.read_line(is);
+    }
+
+    /// 支持 unqualified getline(is, lstring, delimiter)。
+    friend std::istream& getline(std::istream& is, LString& value, char delimiter) {
+        return value.read_line(is, delimiter);
+    }
+
+    /// 支持 unqualified getline(std::move(is), lstring)。
+    friend std::istream& getline(std::istream&& is, LString& value) {
+        return value.read_line(is);
+    }
+
+    /// 支持 unqualified getline(std::move(is), lstring, delimiter)。
+    friend std::istream& getline(std::istream&& is, LString& value, char delimiter) {
+        return value.read_line(is, delimiter);
     }
 
     /// 判断字节子串是否出现在任意位置。
