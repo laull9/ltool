@@ -77,6 +77,10 @@
 #define LTOOL_USE_YYJSON 1
 #endif
 
+#ifndef LTOOL_USE_RANGE_V3
+#define LTOOL_USE_RANGE_V3 1
+#endif
+
 #if LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE(<version>)
 #include <version>
 #endif
@@ -105,6 +109,12 @@
 #else
 #define LTOOL_HAS_RANGES 0
 #define LTOOL_HAS_SPAN 0
+#endif
+
+#if LTOOL_USE_RANGE_V3 && LTOOL_HAS_INCLUDE(<range/v3/all.hpp>)
+#define LTOOL_HAS_RANGE_V3 1
+#else
+#define LTOOL_HAS_RANGE_V3 0
 #endif
 
 #define LTOOL_HAS_THREAD_POOL LTOOL_HAS_CPP17

@@ -12,6 +12,10 @@
 #include "LLog.hpp"
 #include "LJson.hpp"
 
+#if LTOOL_HAS_RANGE_V3
+#include "LRange.hpp"
+#endif
+
 #if LTOOL_HAS_CPP20
 #include "LToml.hpp"
 #include "LYaml.hpp"

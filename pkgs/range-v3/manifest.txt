@@ -1,0 +1,37 @@
+{
+    arch = "arm64",
+    artifacts = {
+        installdir = "/Users/laull/.xmake/packages/r/range-v3/0.12.0/9028529b31d6461696f332d0dbcdce11"
+    },
+    configs = {
+        debug = false,
+        pic = true,
+        shared = false,
+        toolchains = "clang"
+    },
+    deps = { },
+    description = "Range library for C++14/17/20, basis for C++20's std::ranges",
+    envs = { },
+    kind = "library",
+    librarydeps = { },
+    license = "BSL-1.0",
+    mode = "release",
+    name = "range-v3",
+    pathenvs = {
+        "ACLOCAL_PATH",
+        "CMAKE_PREFIX_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LD_LIBRARY_PATH",
+        "PATH",
+        "PKG_CONFIG_PATH",
+        "PYTHONPATH"
+    },
+    plat = "macosx",
+    repo = {
+        branch = "master",
+        commit = "9fe3160a72d009a91d393d029b8b872b6fc52cfc",
+        name = "xmake-repo",
+        url = "https://gitee.com/tboox/xmake-repo.git"
+    },
+    version = "0.12.0"
+}
