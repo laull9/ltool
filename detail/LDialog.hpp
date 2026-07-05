@@ -13,9 +13,16 @@
 #error "LDialog requires bundled or external portable-file-dialogs support"
 #endif
 
+#include <chrono>
 #include <cstdint>
+#include <exception>
+#include <functional>
+#include <future>
 #include <initializer_list>
+#include <memory>
+#include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -189,7 +196,26 @@ struct NotifyOptions {
         : title("Notification"), icon(Icon::Info) {}
 };
 
+template<class T>
+class AsyncResult;
+
 namespace detail {
+
+template<class T>
+struct AsyncState {
+    std::shared_future<T> future;
+    std::function<bool()> kill;
+    std::function<bool(int)> native_ready;
+};
+
+template<class T>
+AsyncResult<T> make_async_result(std::shared_ptr<AsyncState<T> > state);
+
+template<class T>
+inline bool future_ready(const std::shared_future<T>& future, int timeout_ms) {
+    return future.valid() &&
+           future.wait_for(std::chrono::milliseconds(timeout_ms)) == std::future_status::ready;
+}
 
 inline std::string join_patterns(const std::vector<std::string>& patterns) {
     if (patterns.empty()) {
@@ -303,6 +329,216 @@ inline pfd::opt folder_options(bool force_path) {
 
 } // namespace detail
 
+/// 异步对话框结果句柄，可查询、等待、取消并获取最终结果。
+template<class T>
+class AsyncResult {
+public:
+    /// 创建空异步结果。
+    AsyncResult() = default;
+
+    /// 返回当前句柄是否持有异步任务。
+    bool valid() const {
+        return state_ && state_->future.valid();
+    }
+
+    /// 判断异步任务是否已完成。
+    bool ready(int timeout_ms = 0) const {
+        return valid() && detail::future_ready(state_->future, timeout_ms);
+    }
+
+    /// 判断底层原生对话框是否已完成；回调可能尚未执行完。
+    bool native_ready(int timeout_ms = 0) const {
+        const auto& state = require_state();
+        return state.native_ready ? state.native_ready(timeout_ms) : ready(timeout_ms);
+    }
+
+    /// 等待异步任务完成。
+    void wait() const {
+        require_state().future.wait();
+    }
+
+    /// 尝试关闭底层对话框。
+    bool kill() const {
+        const auto& state = require_state();
+        return state.kill ? state.kill() : false;
+    }
+
+    /// 等待并返回结果副本；后台异常会在这里重新抛出。
+    T get() const {
+        return require_state().future.get();
+    }
+
+    /// 等待并返回结果引用；引用生命周期受本句柄和共享异步状态约束。
+    const T& result() const {
+        return require_state().future.get();
+    }
+
+private:
+    template<class U>
+    friend AsyncResult<U> detail::make_async_result(std::shared_ptr<detail::AsyncState<U> > state);
+
+    explicit AsyncResult(std::shared_ptr<detail::AsyncState<T> > state)
+        : state_(std::move(state)) {}
+
+    const detail::AsyncState<T>& require_state() const {
+        if (!valid()) {
+            throw std::runtime_error("invalid LDialog async result");
+        }
+        return *state_;
+    }
+
+    std::shared_ptr<detail::AsyncState<T> > state_;
+};
+
+/// 异步 void 结果句柄，可查询、等待和取消。
+template<>
+class AsyncResult<void> {
+public:
+    /// 创建空异步结果。
+    AsyncResult() = default;
+
+    /// 返回当前句柄是否持有异步任务。
+    bool valid() const {
+        return state_ && state_->future.valid();
+    }
+
+    /// 判断异步任务是否已完成。
+    bool ready(int timeout_ms = 0) const {
+        return valid() && detail::future_ready(state_->future, timeout_ms);
+    }
+
+    /// 判断底层原生对话框是否已完成；回调可能尚未执行完。
+    bool native_ready(int timeout_ms = 0) const {
+        const auto& state = require_state();
+        return state.native_ready ? state.native_ready(timeout_ms) : ready(timeout_ms);
+    }
+
+    /// 等待异步任务完成。
+    void wait() const {
+        require_state().future.wait();
+    }
+
+    /// 尝试关闭底层对话框。
+    bool kill() const {
+        const auto& state = require_state();
+        return state.kill ? state.kill() : false;
+    }
+
+    /// 等待异步任务完成；后台异常会在这里重新抛出。
+    void get() const {
+        require_state().future.get();
+    }
+
+private:
+    friend AsyncResult<void> detail::make_async_result(std::shared_ptr<detail::AsyncState<void> > state);
+
+    explicit AsyncResult(std::shared_ptr<detail::AsyncState<void> > state)
+        : state_(std::move(state)) {}
+
+    const detail::AsyncState<void>& require_state() const {
+        if (!valid()) {
+            throw std::runtime_error("invalid LDialog async result");
+        }
+        return *state_;
+    }
+
+    std::shared_ptr<detail::AsyncState<void> > state_;
+};
+
+/// 打开文件异步回调类型。
+using OpenFileCallback = std::function<void(const std::vector<std::string>&)>;
+/// 单路径异步回调类型。
+using PathCallback = std::function<void(const std::string&)>;
+/// 消息框异步回调类型。
+using MessageCallback = std::function<void(Button)>;
+/// Yes/No 确认框异步回调类型。
+using ConfirmCallback = std::function<void(bool)>;
+/// 无返回值异步回调类型。
+using VoidCallback = std::function<void()>;
+
+/// 打开文件异步结果类型。
+using OpenFileAsync = AsyncResult<std::vector<std::string> >;
+/// 单路径异步结果类型。
+using PathAsync = AsyncResult<std::string>;
+/// 消息框异步结果类型。
+using MessageAsync = AsyncResult<Button>;
+/// 无返回值异步结果类型。
+using VoidAsync = AsyncResult<void>;
+
+namespace detail {
+
+template<class T>
+inline AsyncResult<T> make_async_result(std::shared_ptr<AsyncState<T> > state) {
+    return AsyncResult<T>(std::move(state));
+}
+
+template<>
+inline AsyncResult<void> make_async_result(std::shared_ptr<AsyncState<void> > state) {
+    return AsyncResult<void>(std::move(state));
+}
+
+template<class Result, class NativeDialog>
+inline AsyncResult<Result> run_async_dialog(
+        const std::shared_ptr<NativeDialog>& native,
+        const std::function<Result(NativeDialog&)>& resolver,
+        const std::function<void(const Result&)>& callback) {
+    auto promise = std::make_shared<std::promise<Result> >();
+    auto state = std::make_shared<AsyncState<Result> >();
+    state->future = promise->get_future().share();
+    state->kill = [native]() {
+        return native->kill();
+    };
+    state->native_ready = [native](int timeout_ms) {
+        return native->ready(timeout_ms);
+    };
+
+    std::thread([native, resolver, callback, promise]() {
+        try {
+            Result result = resolver(*native);
+            if (callback) {
+                callback(result);
+            }
+            promise->set_value(result);
+        } catch (...) {
+            promise->set_exception(std::current_exception());
+        }
+    }).detach();
+
+    return make_async_result<Result>(state);
+}
+
+template<class NativeDialog>
+inline AsyncResult<void> run_async_void_dialog(
+        const std::shared_ptr<NativeDialog>& native,
+        const std::function<void(NativeDialog&)>& waiter,
+        const VoidCallback& callback) {
+    auto promise = std::make_shared<std::promise<void> >();
+    auto state = std::make_shared<AsyncState<void> >();
+    state->future = promise->get_future().share();
+    state->kill = [native]() {
+        return native->kill();
+    };
+    state->native_ready = [native](int timeout_ms) {
+        return native->ready(timeout_ms);
+    };
+
+    std::thread([native, waiter, callback, promise]() {
+        try {
+            waiter(*native);
+            if (callback) {
+                callback();
+            }
+            promise->set_value();
+        } catch (...) {
+            promise->set_exception(std::current_exception());
+        }
+    }).detach();
+
+    return make_async_result(state);
+}
+
+} // namespace detail
+
 /// 返回当前平台是否能找到可用的原生对话框实现或辅助程序。
 inline bool available() {
     return pfd::settings::available();
@@ -349,6 +585,58 @@ inline std::vector<std::string> open_file(const std::string& title,
     return open_file(options);
 }
 
+/// 异步打开文件选择对话框；完成时可通过返回句柄或回调取得结果。
+inline OpenFileAsync open_file_async(const OpenFileOptions& options,
+                                     OpenFileCallback callback = OpenFileCallback()) {
+    auto native = std::make_shared<pfd::open_file>(
+        options.title,
+        options.default_path,
+        detail::to_native_filters(options.filters),
+        detail::open_options(options.multiselect));
+
+    return detail::run_async_dialog<std::vector<std::string> >(
+        native,
+        std::function<std::vector<std::string>(pfd::open_file&)>(
+            [](pfd::open_file& dialog) {
+                return dialog.result();
+            }),
+        callback);
+}
+
+/// 异步打开文件选择对话框；完成时可通过返回句柄或回调取得结果。
+inline OpenFileAsync open_file_async(const std::string& title,
+                                     const std::string& default_path,
+                                     const Filters& filters,
+                                     bool multiselect,
+                                     OpenFileCallback callback = OpenFileCallback()) {
+    OpenFileOptions options;
+    options.title = title;
+    options.default_path = default_path;
+    options.filters = filters;
+    options.multiselect = multiselect;
+    return open_file_async(options, callback);
+}
+
+/// 异步打开文件选择对话框；完成时可通过返回句柄或回调取得结果。
+inline OpenFileAsync open_file_async(const std::string& title,
+                                     const std::string& default_path,
+                                     const Filters& filters,
+                                     OpenFileCallback callback) {
+    OpenFileOptions options;
+    options.title = title;
+    options.default_path = default_path;
+    options.filters = filters;
+    return open_file_async(options, callback);
+}
+
+/// 异步打开文件选择对话框；完成时可通过返回句柄或回调取得结果。
+inline OpenFileAsync open_file_async(const std::string& title,
+                                     OpenFileCallback callback) {
+    OpenFileOptions options;
+    options.title = title;
+    return open_file_async(options, callback);
+}
+
 /// 打开单文件选择对话框；取消时返回空字符串。
 inline std::string open_single_file(const OpenFileOptions& options) {
     OpenFileOptions single = options;
@@ -366,6 +654,47 @@ inline std::string open_single_file(const std::string& title,
     options.default_path = default_path;
     options.filters = filters;
     return open_single_file(options);
+}
+
+/// 异步打开单文件选择对话框；取消时结果为空字符串。
+inline PathAsync open_single_file_async(const OpenFileOptions& options,
+                                        PathCallback callback = PathCallback()) {
+    OpenFileOptions single = options;
+    single.multiselect = false;
+    auto native = std::make_shared<pfd::open_file>(
+        single.title,
+        single.default_path,
+        detail::to_native_filters(single.filters),
+        detail::open_options(false));
+
+    return detail::run_async_dialog<std::string>(
+        native,
+        std::function<std::string(pfd::open_file&)>(
+            [](pfd::open_file& dialog) {
+                const auto files = dialog.result();
+                return files.empty() ? std::string() : files.front();
+            }),
+        callback);
+}
+
+/// 异步打开单文件选择对话框；取消时结果为空字符串。
+inline PathAsync open_single_file_async(const std::string& title,
+                                        const std::string& default_path,
+                                        const Filters& filters,
+                                        PathCallback callback = PathCallback()) {
+    OpenFileOptions options;
+    options.title = title;
+    options.default_path = default_path;
+    options.filters = filters;
+    return open_single_file_async(options, callback);
+}
+
+/// 异步打开单文件选择对话框；取消时结果为空字符串。
+inline PathAsync open_single_file_async(const std::string& title,
+                                        PathCallback callback) {
+    OpenFileOptions options;
+    options.title = title;
+    return open_single_file_async(options, callback);
 }
 
 /// 打开保存文件对话框；取消时返回空字符串。
@@ -389,6 +718,58 @@ inline std::string save_file(const std::string& title,
     return save_file(options);
 }
 
+/// 异步打开保存文件对话框；取消时结果为空字符串。
+inline PathAsync save_file_async(const SaveFileOptions& options,
+                                 PathCallback callback = PathCallback()) {
+    auto native = std::make_shared<pfd::save_file>(
+        options.title,
+        options.default_path,
+        detail::to_native_filters(options.filters),
+        detail::save_options(options.force_overwrite));
+
+    return detail::run_async_dialog<std::string>(
+        native,
+        std::function<std::string(pfd::save_file&)>(
+            [](pfd::save_file& dialog) {
+                return dialog.result();
+            }),
+        callback);
+}
+
+/// 异步打开保存文件对话框；取消时结果为空字符串。
+inline PathAsync save_file_async(const std::string& title,
+                                 const std::string& default_path,
+                                 const Filters& filters,
+                                 bool force_overwrite,
+                                 PathCallback callback = PathCallback()) {
+    SaveFileOptions options;
+    options.title = title;
+    options.default_path = default_path;
+    options.filters = filters;
+    options.force_overwrite = force_overwrite;
+    return save_file_async(options, callback);
+}
+
+/// 异步打开保存文件对话框；取消时结果为空字符串。
+inline PathAsync save_file_async(const std::string& title,
+                                 const std::string& default_path,
+                                 const Filters& filters,
+                                 PathCallback callback) {
+    SaveFileOptions options;
+    options.title = title;
+    options.default_path = default_path;
+    options.filters = filters;
+    return save_file_async(options, callback);
+}
+
+/// 异步打开保存文件对话框；取消时结果为空字符串。
+inline PathAsync save_file_async(const std::string& title,
+                                 PathCallback callback) {
+    SaveFileOptions options;
+    options.title = title;
+    return save_file_async(options, callback);
+}
+
 /// 打开目录选择对话框；取消时返回空字符串。
 inline std::string select_folder(const SelectFolderOptions& options) {
     return pfd::select_folder(options.title,
@@ -405,6 +786,53 @@ inline std::string select_folder(const std::string& title,
     options.default_path = default_path;
     options.force_path = force_path;
     return select_folder(options);
+}
+
+/// 异步打开目录选择对话框；取消时结果为空字符串。
+inline PathAsync select_folder_async(const SelectFolderOptions& options,
+                                     PathCallback callback = PathCallback()) {
+    auto native = std::make_shared<pfd::select_folder>(
+        options.title,
+        options.default_path,
+        detail::folder_options(options.force_path));
+
+    return detail::run_async_dialog<std::string>(
+        native,
+        std::function<std::string(pfd::select_folder&)>(
+            [](pfd::select_folder& dialog) {
+                return dialog.result();
+            }),
+        callback);
+}
+
+/// 异步打开目录选择对话框；取消时结果为空字符串。
+inline PathAsync select_folder_async(const std::string& title,
+                                     const std::string& default_path,
+                                     bool force_path,
+                                     PathCallback callback = PathCallback()) {
+    SelectFolderOptions options;
+    options.title = title;
+    options.default_path = default_path;
+    options.force_path = force_path;
+    return select_folder_async(options, callback);
+}
+
+/// 异步打开目录选择对话框；取消时结果为空字符串。
+inline PathAsync select_folder_async(const std::string& title,
+                                     const std::string& default_path,
+                                     PathCallback callback) {
+    SelectFolderOptions options;
+    options.title = title;
+    options.default_path = default_path;
+    return select_folder_async(options, callback);
+}
+
+/// 异步打开目录选择对话框；取消时结果为空字符串。
+inline PathAsync select_folder_async(const std::string& title,
+                                     PathCallback callback) {
+    SelectFolderOptions options;
+    options.title = title;
+    return select_folder_async(options, callback);
 }
 
 /// 打开消息框并返回用户选择。
@@ -434,6 +862,74 @@ inline bool confirm(const std::string& title, const std::string& text,
     return message(title, text, Choice::YesNo, icon) == Button::Yes;
 }
 
+/// 异步打开消息框；完成时可通过返回句柄或回调取得用户选择。
+inline MessageAsync message_async(const MessageOptions& options,
+                                  MessageCallback callback = MessageCallback()) {
+    auto native = std::make_shared<pfd::message>(
+        options.title,
+        options.text,
+        detail::to_native(options.choice),
+        detail::to_native(options.icon));
+
+    return detail::run_async_dialog<Button>(
+        native,
+        std::function<Button(pfd::message&)>(
+            [](pfd::message& dialog) {
+                return detail::from_native(dialog.result());
+            }),
+        std::function<void(const Button&)>(
+            [callback](const Button& button) {
+                if (callback) {
+                    callback(button);
+                }
+            }));
+}
+
+/// 异步打开消息框；完成时可通过返回句柄或回调取得用户选择。
+inline MessageAsync message_async(const std::string& title,
+                                  const std::string& text,
+                                  Choice choice,
+                                  Icon icon,
+                                  MessageCallback callback = MessageCallback()) {
+    MessageOptions options;
+    options.title = title;
+    options.text = text;
+    options.choice = choice;
+    options.icon = icon;
+    return message_async(options, callback);
+}
+
+/// 异步打开消息框；完成时可通过返回句柄或回调取得用户选择。
+inline MessageAsync message_async(const std::string& title,
+                                  const std::string& text,
+                                  Choice choice,
+                                  MessageCallback callback) {
+    return message_async(title, text, choice, Icon::Info, callback);
+}
+
+/// 异步打开消息框；完成时可通过返回句柄或回调取得用户选择。
+inline MessageAsync message_async(const std::string& title,
+                                  const std::string& text,
+                                  MessageCallback callback) {
+    return message_async(title, text, Choice::OkCancel, Icon::Info, callback);
+}
+
+/// 异步打开 Yes/No 确认框；完成时回调参数只有 Yes 为 true。
+inline MessageAsync confirm_async(const std::string& title,
+                                  const std::string& text,
+                                  ConfirmCallback callback = ConfirmCallback()) {
+    return message_async(
+        title,
+        text,
+        Choice::YesNo,
+        Icon::Question,
+        MessageCallback([callback](Button button) {
+            if (callback) {
+                callback(button == Button::Yes);
+            }
+        }));
+}
+
 /// 发送桌面通知。
 inline void notify(const NotifyOptions& options) {
     pfd::notify(options.title, options.text, detail::to_native(options.icon));
@@ -448,6 +944,44 @@ inline void notify(const std::string& title,
     options.text = text;
     options.icon = icon;
     notify(options);
+}
+
+/// 异步发送桌面通知并等待底层通知命令完成。
+inline VoidAsync notify_async(const NotifyOptions& options,
+                              VoidCallback callback = VoidCallback()) {
+    auto native = std::make_shared<pfd::notify>(
+        options.title,
+        options.text,
+        detail::to_native(options.icon));
+
+    return detail::run_async_void_dialog<pfd::notify>(
+        native,
+        std::function<void(pfd::notify&)>(
+            [](pfd::notify& dialog) {
+                while (!dialog.ready(20)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            }),
+        callback);
+}
+
+/// 异步发送桌面通知并等待底层通知命令完成。
+inline VoidAsync notify_async(const std::string& title,
+                              const std::string& text,
+                              Icon icon = Icon::Info,
+                              VoidCallback callback = VoidCallback()) {
+    NotifyOptions options;
+    options.title = title;
+    options.text = text;
+    options.icon = icon;
+    return notify_async(options, callback);
+}
+
+/// 异步发送桌面通知并等待底层通知命令完成。
+inline VoidAsync notify_async(const std::string& title,
+                              const std::string& text,
+                              VoidCallback callback) {
+    return notify_async(title, text, Icon::Info, callback);
 }
 
 /// 原生 portable-file-dialogs 命名空间别名，便于必要时访问底层高级能力。
