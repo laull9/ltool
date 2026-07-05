@@ -16,6 +16,7 @@ option(LTOOL_USE_JSONCPP "Enable JsonCpp integration when available" ON)
 option(LTOOL_USE_SIMDJSON "Enable simdjson integration when available" ON)
 option(LTOOL_USE_YYJSON "Enable yyjson integration when available" ON)
 option(LTOOL_USE_OPENSSL_SHA256 "Use OpenSSL EVP for SHA-256 when OpenSSL::Crypto is available" ON)
+option(LTOOL_USE_PORTABLE_FILE_DIALOGS "Enable portable-file-dialogs support when available" ON)
 
 add_library(ltool INTERFACE)
 add_library(ltool::ltool ALIAS ltool)
@@ -77,6 +78,10 @@ endif()
 
 if(NOT LTOOL_USE_YYJSON)
     target_compile_definitions(ltool INTERFACE LTOOL_USE_YYJSON=0)
+endif()
+
+if(NOT LTOOL_USE_PORTABLE_FILE_DIALOGS)
+    target_compile_definitions(ltool INTERFACE LTOOL_USE_PORTABLE_FILE_DIALOGS=0)
 endif()
 
 if(LTOOL_USE_OPENSSL_SHA256)

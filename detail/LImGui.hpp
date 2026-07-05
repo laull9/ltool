@@ -15,14 +15,40 @@
 #include "LHelloImGui.hpp"
 #include "LImGuiBundle.hpp"
 
+#if LTOOL_HAS_INCLUDE(<misc/cpp/imgui_stdlib.h>)
+#include <misc/cpp/imgui_stdlib.h>
+#elif LTOOL_HAS_INCLUDE(<imgui_stdlib.h>)
+#include <imgui_stdlib.h>
+#endif
+
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace LImGui {
+
+using namespace ::ImGui;
+
+using ::ImDrawList;
+using ::ImFont;
+using ::ImGuiCond;
+using ::ImGuiCond_FirstUseEver;
+using ::ImGuiID;
+using ::ImGuiInputTextFlags;
+using ::ImGuiInputTextFlags_AllowTabInput;
+using ::ImGuiIO;
+using ::ImGuiStyle;
+using ::ImGuiTableColumnFlags;
+using ::ImGuiTableFlags;
+using ::ImTextureID;
+using ::ImU32;
+using ::ImVec2;
+using ::ImVec4;
 
 /// 描述当前编译环境里可用的 ImGui 与 backend 能力。
 struct Capabilities {
@@ -58,17 +84,159 @@ using RunnerParams = HelloImGui::RunnerParams;
 using SimpleRunnerParams = HelloImGui::SimpleRunnerParams;
 /// HelloImGui 无参回调类型别名。
 using VoidFunction = HelloImGui::VoidFunction;
+/// HelloImGui 外部 backend 回调类型别名。
+using ExternalBackendCallbacks = HelloImGui::ExternalBackendCallbacks;
+/// HelloImGui 平台 backend 类型别名。
+using PlatformBackendType = HelloImGui::PlatformBackendType;
+/// HelloImGui 渲染 backend 类型别名。
+using RendererBackendType = HelloImGui::RendererBackendType;
+/// HelloImGui 默认窗口尺寸。
+inline const ScreenSize& DefaultWindowSize = HelloImGui::DefaultWindowSize;
 
 /// HelloImGui 主题辅助命名空间别名。
 namespace theme = HelloImGui::Theme;
 /// HelloImGui 字体辅助命名空间别名。
 namespace fonts = HelloImGui::Fonts;
+/// imgui-bundle 顶层命名空间别名。
+namespace bundle = ImGuiBundle;
+/// imgui-bundle 绘图命名空间别名。
+namespace plot = ImGuiBundle::Plot;
+/// imgui-bundle 3D 绘图命名空间别名。
+namespace plot3d = ImGuiBundle::Plot3D;
+#if LTOOL_IMGUI_BUNDLE_HAS_IMSPINNER
+/// imspinner 小组件命名空间别名。
+namespace spinner = ImSpinner;
+#endif
 /// imgui-bundle 绘制辅助命名空间别名。
 namespace drawing = ImGuiBundle::Drawing;
 /// imgui-bundle 表格辅助命名空间别名。
 namespace tables = ImGuiBundle::Tables;
 /// imgui-bundle 小组件辅助命名空间别名。
 namespace widgets = ImGuiBundle::Widgets;
+
+/// LImGui 颜色类型，支持 RGBA 数值、#rrggbbaa 文本，并可转为 ImGui 颜色类型。
+struct ImColor {
+    ImVec4 value = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+    constexpr ImColor() = default;
+
+    constexpr ImColor(float r, float g, float b, float a = 1.0f)
+        : value(r, g, b, a) {}
+
+    constexpr ImColor(int r, int g, int b, int a = 255)
+        : value(channel_to_float(r),
+                channel_to_float(g),
+                channel_to_float(b),
+                channel_to_float(a)) {}
+
+    explicit ImColor(ImU32 color)
+        : value(ImGui::ColorConvertU32ToFloat4(color)) {}
+
+    explicit ImColor(const ImVec4& color)
+        : value(color) {}
+
+    explicit ImColor(std::string_view hex)
+        : value(parse_hex_or(hex, ImVec4(0.0f, 0.0f, 0.0f, 1.0f))) {}
+
+    static constexpr float channel_to_float(int value) {
+        return static_cast<float>(value < 0 ? 0 : (value > 255 ? 255 : value)) / 255.0f;
+    }
+
+    static ImColor from_rgb(int r, int g, int b) {
+        return ImColor(r, g, b, 255);
+    }
+
+    static ImColor from_rgba(int r, int g, int b, int a) {
+        return ImColor(r, g, b, a);
+    }
+
+    static ImColor from_hex(std::string_view hex) {
+        return ImColor(hex);
+    }
+
+    static ImColor from_u32(ImU32 color) {
+        return ImColor(color);
+    }
+
+    static bool parse_hex(std::string_view text, ImColor& color) {
+        ImVec4 parsed;
+        if (!parse_hex(text, parsed)) {
+            return false;
+        }
+        color = ImColor(parsed);
+        return true;
+    }
+
+    ImVec4 to_vec4() const {
+        return value;
+    }
+
+    ImU32 to_u32() const {
+        return ImGui::ColorConvertFloat4ToU32(value);
+    }
+
+    ::ImColor to_imgui_color() const {
+        return ::ImColor(value);
+    }
+
+    operator ImVec4() const {
+        return to_vec4();
+    }
+
+    operator ImU32() const {
+        return to_u32();
+    }
+
+    operator ::ImColor() const {
+        return to_imgui_color();
+    }
+
+private:
+    static constexpr int hex_value(char c) {
+        return c >= '0' && c <= '9' ? c - '0'
+             : c >= 'a' && c <= 'f' ? c - 'a' + 10
+             : c >= 'A' && c <= 'F' ? c - 'A' + 10
+             : -1;
+    }
+
+    static constexpr int hex_byte(char high, char low) {
+        const int h = hex_value(high);
+        const int l = hex_value(low);
+        return h < 0 || l < 0 ? -1 : h * 16 + l;
+    }
+
+    static bool parse_hex(std::string_view text, ImVec4& color) {
+        if (!text.empty() && text.front() == '#') {
+            text.remove_prefix(1);
+        }
+        if (text.size() != 6 && text.size() != 8) {
+            return false;
+        }
+
+        const int r = hex_byte(text[0], text[1]);
+        const int g = hex_byte(text[2], text[3]);
+        const int b = hex_byte(text[4], text[5]);
+        const int a = text.size() == 8 ? hex_byte(text[6], text[7]) : 255;
+        if (r < 0 || g < 0 || b < 0 || a < 0) {
+            return false;
+        }
+
+        color = ImVec4(channel_to_float(r),
+                       channel_to_float(g),
+                       channel_to_float(b),
+                       channel_to_float(a));
+        return true;
+    }
+
+    static ImVec4 parse_hex_or(std::string_view text, const ImVec4& fallback) {
+        ImVec4 color;
+        return parse_hex(text, color) ? color : fallback;
+    }
+};
+
+inline ImU32 GetColorU32(const ImColor& color) {
+    return color.to_u32();
+}
 
 /// LImGui 内部实现细节命名空间。
 namespace detail {
@@ -88,13 +256,13 @@ inline void text_unformatted(fmt::string_view text) {
 } // namespace detail
 
 /// 显示一段无需格式化的文本。
-inline void Text(fmt::string_view text) {
+inline void TextUnformatted(fmt::string_view text) {
     detail::text_unformatted(text);
 }
 
 /// 使用 fmt 语法格式化并显示文本。
 template<typename... Args>
-inline void Text(fmt::format_string<Args...> fmt_text, Args&&... args) {
+inline void TextFmt(fmt::format_string<Args...> fmt_text, Args&&... args) {
     if constexpr (sizeof...(Args) == 0) {
         detail::text_unformatted(fmt_text.get());
     } else {
@@ -236,6 +404,16 @@ inline void configure_external_vulkan_backend(
     params.externalBackendCallbacks = std::move(callbacks);
 }
 
+/// 请求 HelloImGui 在当前帧后退出。
+inline void RequestExit() {
+    HelloImGui::RequestExit();
+}
+
+/// 返回 HelloImGui 统计的当前帧率。
+inline float FrameRate() {
+    return HelloImGui::FrameRate();
+}
+
 /// 自动 ID 后缀的固定宽度。
 constexpr std::uint32_t auto_id_width = 8;
 /// 自动 ID 后缀使用的字符表。
@@ -306,7 +484,7 @@ inline void run(const SimpleRunnerParams& params) {
 /// 使用单个 GUI 回调和窗口信息启动 HelloImGui。
 inline void run(const VoidFunction& gui,
                 const std::string& title = "LTool ImGui",
-                const ScreenSize& size = HelloImGui::DefaultWindowSize) {
+                const ScreenSize& size = DefaultWindowSize) {
     HelloImGui::Run(gui, title, false, false, size);
 }
 

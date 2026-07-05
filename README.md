@@ -7,9 +7,10 @@
 - 纯头文件：复制到项目中或通过 `-I` 指向本目录即可。
 - 中文文本友好：`LString` 内部按 UTF-8 字节保存，边界 API 支持 GBK/GB2312、UTF-16、UTF-32、Latin1 等编码转换。
 - 常用能力打包：字符串处理、文件读写、目录遍历、路径辅助、配置读写、日志、随机数、Base64、MD5、SHA-256、枚举名转换和线程安全包装。
+- 原生对话框：基于内置 portable-file-dialogs 的 `LDialog`，可打开文件、目录、消息框和桌面通知。
 - 可选 ImGui facade：检测到 Dear ImGui 后，可通过 `LImGui.hpp` 快速接入 HelloImGui、字体、主题和常用小组件。
 - 尽量贴近标准库：类型和接口围绕 `std::string`、`std::filesystem::path`、`std::mutex` / `std::shared_mutex` 展开。
-- 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`、`toml++` 和 `fkYAML`。
+- 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`、`portable-file-dialogs`、`toml++` 和 `fkYAML`。
 
 ## 项目约定
 
@@ -65,6 +66,7 @@ c++ -std=c++20 -I. demo.cpp -o demo -liconv
 | 路径 | [LPath](docs/LPath.md) | `LPath.hpp` |
 | 文件读写 | [LFile](docs/LFile.md) | `LFile.hpp` |
 | 随机数和 UUID | [LRandom](docs/LRandom.md) | `LRandom.hpp` |
+| 原生对话框 | [LDialog](docs/LDialog.md) | `LDialog.hpp` |
 | 加锁访问 | [Locked](docs/Locked.md) | `Locked.hpp` |
 | ImGui facade | [LImGui](docs/LImGui.md) | `LImGui.hpp` |
 | 集成、依赖和开关 | [集成说明](docs/Integration.md) | `LTool.hpp`、`detail/LToolConfig.hpp`、`detail/LFmt.hpp` |

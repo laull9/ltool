@@ -27,6 +27,10 @@
 #include "LRandom.hpp"
 #include "LTable.hpp"
 
+#if LTOOL_HAS_PORTABLE_FILE_DIALOGS
+#include "LDialog.hpp"
+#endif
+
 #if LTOOL_HAS_FILESYSTEM
 #include "LPath.hpp"
 #include "LFile.hpp"
