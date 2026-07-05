@@ -49,6 +49,8 @@ struct formatter<LFile, Char, void> : formatter<std::filesystem::path, Char> {
 
 namespace LFileDetail {
 
+inline constexpr std::size_t sha256_file_buffer_size = 1024 * 1024;
+
 inline std::ios::openmode write_open_mode(LFileWriteMode mode) {
     auto flags = std::ios::binary | std::ios::out;
     if (mode == LFileWriteMode::Append) {
@@ -90,7 +92,7 @@ inline std::string sha256_file(const std::filesystem::path& path) {
     }
 
     LTool::detail::Sha256 sha256;
-    std::array<char, 8192> buffer {};
+    std::vector<char> buffer(sha256_file_buffer_size);
 
     while (file) {
         file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));

@@ -62,6 +62,9 @@ using ranges::end;
 using ranges::range_reference_t;
 using ranges::range_value_t;
 
+template<class Container>
+class ContainerRange;
+
 template<class Container, class Range>
 Container to(Range&& range);
 
@@ -243,6 +246,124 @@ struct ToUnorderedMapClosure {
 };
 
 } // namespace Detail
+
+/**
+ * @brief Owns a standard container while also modeling a range-v3 view.
+ *
+ * range-v3 intentionally rejects piping temporary containers into lazy views,
+ * because saving the view could otherwise dangle. This wrapper gives ltool APIs
+ * a way to return owned, vector-like results that are safe to pipe as
+ * temporaries: the view stores the container by value.
+ */
+template<class Container>
+class ContainerRange : public ranges::view_base {
+private:
+    Container container_;
+
+public:
+    using container_type = Container;
+    using value_type = typename Container::value_type;
+    using size_type = typename Container::size_type;
+    using difference_type = typename Container::difference_type;
+    using reference = typename Container::reference;
+    using const_reference = typename Container::const_reference;
+    using iterator = typename Container::iterator;
+    using const_iterator = typename Container::const_iterator;
+
+    ContainerRange() = default;
+    ContainerRange(const Container& container)
+        : container_(container) {}
+    ContainerRange(Container&& container)
+        : container_(std::move(container)) {}
+
+    Container& container() & noexcept {
+        return container_;
+    }
+
+    const Container& container() const& noexcept {
+        return container_;
+    }
+
+    Container&& container() && noexcept {
+        return std::move(container_);
+    }
+
+    operator Container&() & noexcept {
+        return container_;
+    }
+
+    operator const Container&() const& noexcept {
+        return container_;
+    }
+
+    operator Container() && noexcept {
+        return std::move(container_);
+    }
+
+    iterator begin() noexcept {
+        return container_.begin();
+    }
+
+    const_iterator begin() const noexcept {
+        return container_.begin();
+    }
+
+    const_iterator cbegin() const noexcept {
+        return container_.cbegin();
+    }
+
+    iterator end() noexcept {
+        return container_.end();
+    }
+
+    const_iterator end() const noexcept {
+        return container_.end();
+    }
+
+    const_iterator cend() const noexcept {
+        return container_.cend();
+    }
+
+    bool empty() const noexcept {
+        return container_.empty();
+    }
+
+    size_type size() const noexcept {
+        return container_.size();
+    }
+
+    reference operator[](size_type pos) {
+        return container_[pos];
+    }
+
+    const_reference operator[](size_type pos) const {
+        return container_[pos];
+    }
+
+    reference front() {
+        return container_.front();
+    }
+
+    const_reference front() const {
+        return container_.front();
+    }
+
+    reference back() {
+        return container_.back();
+    }
+
+    const_reference back() const {
+        return container_.back();
+    }
+
+    iterator erase(const_iterator pos) {
+        return container_.erase(pos);
+    }
+
+    iterator erase(const_iterator first, const_iterator last) {
+        return container_.erase(first, last);
+    }
+};
 
 inline constexpr auto all = ranges::views::all;
 inline constexpr auto cache1 = ranges::views::cache1;

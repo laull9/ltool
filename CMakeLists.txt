@@ -15,6 +15,7 @@ option(LTOOL_USE_NLOHMANN_JSON "Enable nlohmann/json integration when available"
 option(LTOOL_USE_JSONCPP "Enable JsonCpp integration when available" ON)
 option(LTOOL_USE_SIMDJSON "Enable simdjson integration when available" ON)
 option(LTOOL_USE_YYJSON "Enable yyjson integration when available" ON)
+option(LTOOL_USE_OPENSSL_SHA256 "Use OpenSSL EVP for SHA-256 when OpenSSL::Crypto is available" ON)
 
 add_library(ltool INTERFACE)
 add_library(ltool::ltool ALIAS ltool)
@@ -23,8 +24,8 @@ target_compile_features(ltool INTERFACE cxx_std_11)
 
 target_include_directories(ltool
     INTERFACE
-        $<BUILD_INTERFACE:${PROJECT_CURRENT_SOURCE_DIR}/..>
-        $<BUILD_INTERFACE:${PROJECT_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ltool>
 )
@@ -78,6 +79,18 @@ if(NOT LTOOL_USE_YYJSON)
     target_compile_definitions(ltool INTERFACE LTOOL_USE_YYJSON=0)
 endif()
 
+if(LTOOL_USE_OPENSSL_SHA256)
+    find_package(OpenSSL QUIET)
+    if(TARGET OpenSSL::Crypto)
+        target_link_libraries(ltool INTERFACE OpenSSL::Crypto)
+        target_compile_definitions(ltool INTERFACE LTOOL_USE_OPENSSL_SHA256=1)
+    else()
+        target_compile_definitions(ltool INTERFACE LTOOL_USE_OPENSSL_SHA256=0)
+    endif()
+else()
+    target_compile_definitions(ltool INTERFACE LTOOL_USE_OPENSSL_SHA256=0)
+endif()
+
 if(APPLE OR CMAKE_SYSTEM_NAME MATCHES "BSD")
     find_library(LTOOL_ICONV_LIBRARY iconv)
     if(LTOOL_ICONV_LIBRARY)
@@ -86,7 +99,7 @@ if(APPLE OR CMAKE_SYSTEM_NAME MATCHES "BSD")
 endif()
 
 install(
-    DIRECTORY ${PROJECT_CURRENT_SOURCE_DIR}/
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ltool
     FILES_MATCHING
         PATTERN "*.h"

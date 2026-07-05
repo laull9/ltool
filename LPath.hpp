@@ -49,6 +49,10 @@
 #endif // LTOOL_HAS_FILESYSTEM
 #define LPATH_HAS_FILESYSTEM LTOOL_HAS_FILESYSTEM
 
+#if LTOOL_HAS_RANGE_V3
+#include "LRange.hpp"
+#endif // LTOOL_HAS_RANGE_V3
+
 #if !LPATH_HAS_FILESYSTEM
 #error "LPath requires C++17 std::filesystem support"
 #endif // !LPATH_HAS_FILESYSTEM
@@ -176,6 +180,11 @@ public:
     using path_type = std::filesystem::path;
     using size_type = std::uintmax_t;
     using file_time_type = std::filesystem::file_time_type;
+#if LTOOL_HAS_RANGE_V3
+    using entry_list = LRange::ContainerRange<std::vector<LPath>>;
+#else
+    using entry_list = std::vector<LPath>;
+#endif // LTOOL_HAS_RANGE_V3
 
     /// 创建空路径。
     LPath() = default;
@@ -542,32 +551,32 @@ public:
     }
 
     /// 列出目录项，可选择递归和过滤隐藏文件名。
-    std::vector<LPath> list(LPathEntryKind kind = LPathEntryKind::Any, bool recursive = false,
-                            bool include_hidden = true) const {
+    entry_list list(LPathEntryKind kind = LPathEntryKind::Any, bool recursive = false,
+                    bool include_hidden = true) const {
         return list(path_, kind, recursive, include_hidden);
     }
 
     /// 列出当前目录下的普通文件。
-    std::vector<LPath> files(LStringDetail::string_view extension = {},
-                             bool include_hidden = true) const {
+    entry_list files(LStringDetail::string_view extension = {},
+                     bool include_hidden = true) const {
         return files(path_, extension, include_hidden);
     }
 
     /// 递归列出普通文件。
-    std::vector<LPath> recursive_files(LStringDetail::string_view extension = {},
-                                       bool include_hidden = true) const {
+    entry_list recursive_files(LStringDetail::string_view extension = {},
+                               bool include_hidden = true) const {
         return recursive_files(path_, extension, include_hidden);
     }
 
     /// 列出当前目录下的子目录。
-    std::vector<LPath> directories(bool include_hidden = true) const {
+    entry_list directories(bool include_hidden = true) const {
         return directories(path_, include_hidden);
     }
 
     /// 使用当前目录作为 base，按文件名执行简单通配匹配。
-    std::vector<LPath> glob(LStringDetail::string_view pattern, bool recursive = false,
-                            LPathEntryKind kind = LPathEntryKind::Any,
-                            bool include_hidden = true) const {
+    entry_list glob(LStringDetail::string_view pattern, bool recursive = false,
+                    LPathEntryKind kind = LPathEntryKind::Any,
+                    bool include_hidden = true) const {
         return glob_path(path_ / std::string(pattern), recursive, kind, include_hidden);
     }
 
@@ -631,10 +640,10 @@ public:
     }
 
     /// 列出目录项，可选择递归和过滤隐藏文件名。
-    static std::vector<LPath> list(const std::filesystem::path& directory,
-                                   LPathEntryKind kind = LPathEntryKind::Any,
-                                   bool recursive = false,
-                                   bool include_hidden = true) {
+    static entry_list list(const std::filesystem::path& directory,
+                           LPathEntryKind kind = LPathEntryKind::Any,
+                           bool recursive = false,
+                           bool include_hidden = true) {
         std::vector<std::filesystem::path> paths;
         auto options = std::filesystem::directory_options::skip_permission_denied;
 
@@ -667,9 +676,9 @@ public:
     }
 
     /// 列出目录下的普通文件。
-    static std::vector<LPath> files(const std::filesystem::path& directory,
-                                    LStringDetail::string_view extension = {},
-                                    bool include_hidden = true) {
+    static entry_list files(const std::filesystem::path& directory,
+                            LStringDetail::string_view extension = {},
+                            bool include_hidden = true) {
         auto out = list(directory, LPathEntryKind::File, false, include_hidden);
         if (!extension.empty()) {
             out.erase(std::remove_if(out.begin(), out.end(), [&](const LPath& file) {
@@ -680,9 +689,9 @@ public:
     }
 
     /// 递归列出普通文件。
-    static std::vector<LPath> recursive_files(const std::filesystem::path& directory,
-                                              LStringDetail::string_view extension = {},
-                                              bool include_hidden = true) {
+    static entry_list recursive_files(const std::filesystem::path& directory,
+                                      LStringDetail::string_view extension = {},
+                                      bool include_hidden = true) {
         auto out = list(directory, LPathEntryKind::File, true, include_hidden);
         if (!extension.empty()) {
             out.erase(std::remove_if(out.begin(), out.end(), [&](const LPath& file) {
@@ -693,8 +702,8 @@ public:
     }
 
     /// 列出目录下的子目录。
-    static std::vector<LPath> directories(const std::filesystem::path& directory,
-                                          bool include_hidden = true) {
+    static entry_list directories(const std::filesystem::path& directory,
+                                  bool include_hidden = true) {
         return list(directory, LPathEntryKind::Directory, false, include_hidden);
     }
 
@@ -704,10 +713,10 @@ public:
      * pattern 的父路径作为搜索目录，filename 部分支持 * 和 ?。例如传入
      * "src / *.cpp" 形态的路径会在 src 下匹配文件名，不展开通配目录组件。
      */
-    static std::vector<LPath> glob_path(const std::filesystem::path& pattern,
-                                        bool recursive = false,
-                                        LPathEntryKind kind = LPathEntryKind::Any,
-                                        bool include_hidden = true) {
+    static entry_list glob_path(const std::filesystem::path& pattern,
+                                bool recursive = false,
+                                LPathEntryKind kind = LPathEntryKind::Any,
+                                bool include_hidden = true) {
         auto directory = pattern.parent_path();
         if (directory.empty()) {
             directory = ".";
