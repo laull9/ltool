@@ -164,13 +164,31 @@ inline const char* level_color(Level severity) noexcept {
 }
 
 inline bool env_is_set(const char* name) {
+#if LTOOL_PLATFORM_WINDOWS
+    char* value = nullptr;
+    std::size_t size = 0;
+    const bool found = _dupenv_s(&value, &size, name) == 0 && value != nullptr;
+    const bool result = found && value[0] != '\0';
+    std::free(value);
+    return result;
+#else
     const char* value = std::getenv(name);
     return value && value[0] != '\0';
+#endif
 }
 
 inline bool env_is_zero(const char* name) {
+#if LTOOL_PLATFORM_WINDOWS
+    char* value = nullptr;
+    std::size_t size = 0;
+    const bool found = _dupenv_s(&value, &size, name) == 0 && value != nullptr;
+    const bool result = found && value[0] == '0' && value[1] == '\0';
+    std::free(value);
+    return result;
+#else
     const char* value = std::getenv(name);
     return value && value[0] == '0' && value[1] == '\0';
+#endif
 }
 
 inline bool is_terminal(std::FILE* file) {

@@ -80,6 +80,18 @@
 
 #include "detail/LFmt.hpp"
 
+class LString;
+
+// Declare the formatter before LString's constrained conversion constructors.
+// fmt::is_formattable<LString, char> may otherwise instantiate the primary
+// formatter first, which makes the specialization at the end of this header
+// ill-formed on Clang/clang-cl.
+template<>
+struct fmt::formatter<LString> : fmt::formatter<fmt::string_view> {
+    template<class FormatContext>
+    typename FormatContext::iterator format(const LString& value, FormatContext& ctx) const;
+};
+
 #ifndef LSTRING_USE_EXTERNAL_FMT
 #define LSTRING_USE_EXTERNAL_FMT LTOOL_USE_EXTERNAL_FMT
 #endif // !LSTRING_USE_EXTERNAL_FMT
@@ -2954,15 +2966,12 @@ inline LString operator""_ls(const char* text, std::size_t size) {
 }
 
 /// fmt 格式化器：LString 按 LStringDetail::string_view 的规则输出。
-template<>
-struct fmt::formatter<LString> : fmt::formatter<fmt::string_view> {
-    /// 将存储字节写入 fmt 输出上下文。
-    template<class FormatContext>
-    typename FormatContext::iterator format(const LString& value, FormatContext& ctx) const {
-        return fmt::formatter<fmt::string_view>::format(
-            fmt::string_view(value.data(), value.size()), ctx);
-    }
-};
+template<class FormatContext>
+typename FormatContext::iterator fmt::formatter<LString>::format(
+    const LString& value, FormatContext& ctx) const {
+    return fmt::formatter<fmt::string_view>::format(
+        fmt::string_view(value.data(), value.size()), ctx);
+}
 
 #if LSTRING_HAS_STD_FORMAT
 /// std::format 格式化器：LString 按 LStringDetail::string_view 的规则输出。

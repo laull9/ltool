@@ -48,6 +48,27 @@ struct LEnvOptions {
 
 namespace LEnvDetail {
 
+inline bool read_process_env(const char* key, std::string& out) {
+#if LTOOL_PLATFORM_WINDOWS
+    char* value = nullptr;
+    std::size_t size = 0;
+    if (_dupenv_s(&value, &size, key) != 0 || value == nullptr) {
+        std::free(value);
+        return false;
+    }
+    out.assign(value);
+    std::free(value);
+    return true;
+#else
+    const char* value = std::getenv(key);
+    if (!value) {
+        return false;
+    }
+    out.assign(value);
+    return true;
+#endif
+}
+
 inline bool is_space(char ch) {
     return std::isspace(static_cast<unsigned char>(ch)) != 0;
 }
@@ -125,8 +146,8 @@ inline std::string lookup_value(const std::map<std::string, std::string>& values
     if (it != values.end()) {
         return it->second;
     }
-    const char* env = std::getenv(key.c_str());
-    return env ? std::string(env) : std::string();
+    std::string env;
+    return read_process_env(key.c_str(), env) ? env : std::string();
 }
 
 inline std::string expand_vars(const std::string& value,
@@ -395,20 +416,17 @@ public:
      */
     static std::string get_env(const std::string& key,
                                std::string fallback = std::string()) {
-        const char* value = std::getenv(key.c_str());
-        return value ? std::string(value) : std::move(fallback);
+        std::string value;
+        return LEnvDetail::read_process_env(key.c_str(), value)
+                   ? value
+                   : std::move(fallback);
     }
 
     /**
      * @brief 获取当前进程环境变量；存在时写入 out 并返回 true。
      */
     static bool try_get_env(const std::string& key, std::string& out) {
-        const char* value = std::getenv(key.c_str());
-        if (!value) {
-            return false;
-        }
-        out = value;
-        return true;
+        return LEnvDetail::read_process_env(key.c_str(), out);
     }
 
     /**
@@ -416,8 +434,11 @@ public:
      */
     static bool set_env(const std::string& key, const std::string& value,
                         bool overwrite = true) {
-        if (!overwrite && std::getenv(key.c_str())) {
-            return true;
+        if (!overwrite) {
+            std::string existing;
+            if (LEnvDetail::read_process_env(key.c_str(), existing)) {
+                return true;
+            }
         }
 #if LTOOL_PLATFORM_WINDOWS
         return _putenv_s(key.c_str(), value.c_str()) == 0;

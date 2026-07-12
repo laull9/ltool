@@ -57,7 +57,11 @@ private:
         using Ptr = std::conditional_t<Const, const T*, T*>;
 
         Ptr ptr_;
+#if defined(_MSC_VER)
+        [[msvc::no_unique_address]] Lock lock_;
+#else
         [[no_unique_address]] Lock lock_;
+#endif
 
     public:
         Guard(Ptr ptr, Lock&& lock)

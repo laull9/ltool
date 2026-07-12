@@ -260,6 +260,86 @@ inline std::string format_json_with_indent(const std::string& text, int indent) 
     return out;
 }
 
+#if LJSON_HAS_YYJSON
+inline void append_json_string(std::string& out, const char* text, std::size_t size) {
+    static constexpr char hex[] = "0123456789abcdef";
+    out.push_back('"');
+    for (std::size_t i = 0; i < size; ++i) {
+        const unsigned char ch = static_cast<unsigned char>(text[i]);
+        switch (ch) {
+        case '"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\b': out += "\\b"; break;
+        case '\f': out += "\\f"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default:
+            if (ch < 0x20) {
+                out += "\\u00";
+                out.push_back(hex[ch >> 4]);
+                out.push_back(hex[ch & 0x0f]);
+            } else {
+                out.push_back(static_cast<char>(ch));
+            }
+            break;
+        }
+    }
+    out.push_back('"');
+}
+
+inline void append_mutable_json(std::string& out, yyjson_mut_val* value) {
+    if (!value) {
+        throw std::logic_error("LJson::Json references no value");
+    }
+    if (yyjson_mut_is_null(value)) {
+        out += "null";
+    } else if (yyjson_mut_is_bool(value)) {
+        out += yyjson_mut_get_bool(value) ? "true" : "false";
+    } else if (yyjson_mut_is_num(value)) {
+        char number[40];
+        char* end = yyjson_mut_write_number(value, number);
+        if (!end) {
+            throw std::runtime_error("yyjson failed to write JSON number");
+        }
+        out.append(number, static_cast<std::size_t>(end - number));
+    } else if (yyjson_mut_is_str(value)) {
+        append_json_string(out, yyjson_mut_get_str(value), yyjson_mut_get_len(value));
+    } else if (yyjson_mut_is_raw(value)) {
+        const char* raw = yyjson_mut_get_raw(value);
+        out.append(raw, yyjson_mut_get_len(value));
+    } else if (yyjson_mut_is_arr(value)) {
+        out.push_back('[');
+        yyjson_mut_arr_iter iter = yyjson_mut_arr_iter_with(value);
+        bool first = true;
+        while (auto* item = yyjson_mut_arr_iter_next(&iter)) {
+            if (!first) {
+                out.push_back(',');
+            }
+            first = false;
+            append_mutable_json(out, item);
+        }
+        out.push_back(']');
+    } else if (yyjson_mut_is_obj(value)) {
+        out.push_back('{');
+        yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(value);
+        bool first = true;
+        while (auto* key = yyjson_mut_obj_iter_next(&iter)) {
+            if (!first) {
+                out.push_back(',');
+            }
+            first = false;
+            append_json_string(out, yyjson_mut_get_str(key), yyjson_mut_get_len(key));
+            out.push_back(':');
+            append_mutable_json(out, yyjson_mut_obj_iter_get_val(key));
+        }
+        out.push_back('}');
+    } else {
+        throw std::runtime_error("yyjson contains an unsupported JSON value");
+    }
+}
+#endif
+
 } // namespace detail
 
 class JsonView {
@@ -523,35 +603,26 @@ private:
         }
     }
 
+    std::string write_value(yyjson_mut_val* value) const {
+        std::string text;
+        detail::append_mutable_json(text, value);
+        return text;
+    }
+
     void sync_text() const {
         if (!value_) {
             return;
         }
 
-        const auto flags = YYJSON_WRITE_NOFLAG;
-        std::size_t size = 0;
-        char* data = yyjson_mut_val_write(value_, flags, &size);
-        if (!data) {
-            return;
-        }
-        text_.assign(data, size);
-        std::free(data);
+        text_ = write_value(value_);
         if (!proxy_ && text_dirty_) {
             *text_dirty_ = false;
         }
     }
 
     std::string write_current(int indent = -1) const {
-        auto* value = const_value();
-        yyjson_write_flag flags = YYJSON_WRITE_NOFLAG;
-        if (detail::yyjson_native_write_flags(indent, flags)) {
-            return detail::yyjson_to_string(value, flags);
-        }
-
-        return detail::format_json_with_indent(
-            detail::yyjson_to_string(value, YYJSON_WRITE_NOFLAG),
-            indent
-        );
+        const auto text = write_value(const_value());
+        return indent > 0 ? detail::format_json_with_indent(text, indent) : text;
     }
 
     void replace_current(yyjson_mut_val* value) {
@@ -1487,6 +1558,9 @@ public:
     }
 
     std::string dump(int indent = -1) const {
+        if (!value_) {
+            return indent > 0 ? detail::format_json_with_indent(text_, indent) : text_;
+        }
         return write_current(indent);
     }
 
