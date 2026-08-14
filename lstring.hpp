@@ -1892,10 +1892,12 @@ public:
             return *this;
         }
 
+        const std::string from_copy(from.data(), from.size());
+        const std::string to_copy(to.data(), to.size());
         size_type pos = 0;
-        while ((pos = data_.find(from, pos)) != npos) {
-            data_.replace(pos, from.size(), to);
-            pos += to.size();
+        while ((pos = data_.find(from_copy, pos)) != npos) {
+            data_.replace(pos, from_copy.size(), to_copy);
+            pos += to_copy.size();
         }
         return *this;
     }
@@ -2579,10 +2581,10 @@ public:
         }
         case LEncoding::Utf8:
         case LEncoding::Unknown:
-            return data_;
+            return LStringDetail::encode_utf8(codepoints);
         case LEncoding::Utf8Bom: {
             std::string out = write_bom ? "\xEF\xBB\xBF" : "";
-            out += data_;
+            out += LStringDetail::encode_utf8(codepoints);
             return out;
         }
         case LEncoding::Utf16Le:

@@ -43,6 +43,7 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -693,15 +694,20 @@ public:
         LTOOL_REQUIRES(LTool::concepts::Iterator<It>)
     std::size_t weighted_index(It first, It last) {
         std::vector<double> weights;
+        double total = 0.0;
         for (; first != last; ++first) {
             const double weight = static_cast<double>(*first);
-            if (weight < 0.0) {
-                throw std::invalid_argument("LRandom weights must be non-negative");
+            if (!std::isfinite(weight) || weight < 0.0) {
+                throw std::invalid_argument("LRandom weights must be finite and non-negative");
             }
             weights.push_back(weight);
+            total += weight;
         }
         if (weights.empty()) {
             throw LRandomDetail::empty_range_error("pick weighted index");
+        }
+        if (!std::isfinite(total) || total <= 0.0) {
+            throw std::invalid_argument("LRandom weights must have a positive finite total");
         }
         std::discrete_distribution<std::size_t> dist(weights.begin(), weights.end());
         return dist(engine_);

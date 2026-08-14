@@ -1,6 +1,6 @@
 # LJson 和 LConfig
 
-`LJson` 是 JSON 能力的统一入口。它不把某一个 JSON 库变成 ltool 的硬依赖，而是按头文件检测开启适配器。
+`LJson` 是 JSON 能力的统一入口。`LJson::Json` 的可变 DOM 有意以 yyjson 作为高性能强制后端；其他 JSON 库按头文件检测提供互操作适配器，不替代 DOM 后端。
 
 `LToml` 和 `LYaml` 是 reflect-cpp 的 TOML/YAML 反射入口封装。`LConfig` 在它们之上提供按扩展名识别的配置读写。
 
@@ -8,7 +8,7 @@
 
 核心类型：
 
-- `LJson::JsonView`：非拥有 JSON 文本视图，字符串输入路径零拷贝。
+- `LJson::JsonView`：非拥有 JSON 文本视图，字符串输入路径零拷贝；仅可在源 `Json` 存活且未修改期间使用。
 - `LJson::Json`：拥有 JSON 文本和内建 DOM 的统一中间表示，支持随机增删改查；检测到外部 JSON 库时可作为转换入口/出口。
 
 当前适配器：
@@ -16,7 +16,7 @@
 - nlohmann/json：检测 `<nlohmann/json.hpp>` 或 `<nlohmann.hpp>`，宏 `LJSON_HAS_NLOHMANN_JSON`。
 - JsonCpp/cppjson：检测 `<json/json.h>`，宏 `LJSON_HAS_JSONCPP` / `LJSON_HAS_CPPJSON`。
 - simdjson：C++17 起检测 `<simdjson.h>`，宏 `LJSON_HAS_SIMDJSON`。
-- yyjson：优先使用 ltool 内置的 `pkgs/rfl/thirdparty/yyjson.h`；如果没有，则检测 `<yyjson.h>`，宏 `LJSON_HAS_YYJSON`。
+- yyjson：`Json` DOM 的强制后端。优先使用 ltool 内置的 `pkgs/rfl/thirdparty/yyjson.h`；如果没有，则必须提供 `<yyjson.h>`，否则 `LJson.hpp` 会给出编译错误。
 - rfl/json：默认开启；处于 C++20 且能找到 ltool 内置的 `"pkgs/rfl/json.hpp"` 或外部 `<rfl/json.hpp>` 时，宏 `LJSON_HAS_STATIC_REFLECTION` 会变为 1。
 
 ```cpp

@@ -1,6 +1,30 @@
 /**
  * @file LLog.hpp
  * @brief ltool 的轻量级纯头文件日志工具。
+ *
+ * 提供多级别日志（trace/debug/info/warn/error/fatal）、终端颜色、
+ * 来源位置（source_location）、自定义 sink，以及编译期可裁剪的宏入口。
+ *
+ * 主要接口：
+ * - 宏：LLOG_TRACE/LLOG_DEBUG/LLOG_INFO/LLOG_WARN/LLOG_ERROR/LLOG_FATAL，
+ *   格式串与 fmt 一致，自动携带调用位置。
+ * - 函数：LLog::info/debug/warn/error/fatal/trace/writef 等。
+ * - 配置：set_level()、set_location_visible()、set_color_mode()、set_sink()。
+ * - 等级常量：LTOOL_LOG_LEVEL_*；编译期用 LTOOL_ACTIVE_LOG_LEVEL 裁剪。
+ *
+ * 常用示例：
+ * @code
+ * #include "LLog.hpp"
+ *
+ * LLog::set_level(LLog::Level::debug);
+ * LLOG_INFO("server started on port {}", 8080);
+ * LLOG_WARN("disk usage {:.1f}%", 87.5);
+ *
+ * // 自定义 sink：把日志写到文件或网络
+ * LLog::set_sink([](const LLog::Record& r) {
+ *     std::cout << LLog::format_record(r, true) << '\n';
+ * });
+ * @endcode
  */
 
 #ifndef LTOOL_LLOG_INCLUDE
@@ -52,36 +76,46 @@
 
 namespace LLog {
 
+/// 日志级别，数值越大越严重。
 enum class Level {
-    trace = LTOOL_LOG_LEVEL_TRACE,
-    debug = LTOOL_LOG_LEVEL_DEBUG,
-    info = LTOOL_LOG_LEVEL_INFO,
-    warn = LTOOL_LOG_LEVEL_WARN,
-    error = LTOOL_LOG_LEVEL_ERROR,
-    fatal = LTOOL_LOG_LEVEL_FATAL,
-    off = LTOOL_LOG_LEVEL_OFF
+    trace = LTOOL_LOG_LEVEL_TRACE, ///< 最详细的调试跟踪。
+    debug = LTOOL_LOG_LEVEL_DEBUG, ///< 调试信息。
+    info = LTOOL_LOG_LEVEL_INFO,   ///< 常规信息。
+    warn = LTOOL_LOG_LEVEL_WARN,   ///< 警告。
+    error = LTOOL_LOG_LEVEL_ERROR, ///< 错误。
+    fatal = LTOOL_LOG_LEVEL_FATAL, ///< 致命错误。
+    off = LTOOL_LOG_LEVEL_OFF      ///< 关闭日志。
 };
 
+/// 终端颜色输出策略。
 enum class ColorMode {
-    automatic,
-    always,
-    never
+    automatic, ///< 仅当输出到终端时着色。
+    always,    ///< 始终着色。
+    never      ///< 永不着色。
 };
 
 #if LTOOL_HAS_SOURCE_LOCATION
+/// 编译期来源位置；有 <source_location> 时使用标准类型。
 using SourceLocation = std::source_location;
 #define LTOOL_CURRENT_SOURCE_LOCATION ::LLog::SourceLocation::current()
 #else
+/**
+ * @brief 无 <source_location> 时的回退来源位置类型。
+ *
+ * 保存文件名、行号、函数名和列号；current() 由宏注入 __FILE__/__LINE__。
+ */
 class SourceLocation {
 private:
-    const char* file_name_ = "";
-    const char* function_name_ = "";
-    std::uint_least32_t line_ = 0;
-    std::uint_least32_t column_ = 0;
+    const char* file_name_ = "";     ///< 文件名。
+    const char* function_name_ = ""; ///< 函数名。
+    std::uint_least32_t line_ = 0;   ///< 行号。
+    std::uint_least32_t column_ = 0; ///< 列号。
 
 public:
+    /// 默认构造空位置。
     constexpr SourceLocation() noexcept = default;
 
+    /// 用各字段构造来源位置。
     constexpr SourceLocation(const char* file_name, std::uint_least32_t line,
                               const char* function_name = "",
                               std::uint_least32_t column = 0) noexcept
@@ -90,22 +124,27 @@ public:
           line_(line),
           column_(column) {}
 
+    /// 返回当前调用位置；无标准库支持时由宏填入 __FILE__/__LINE__。
     static constexpr SourceLocation current() noexcept {
         return {};
     }
 
+    /// 返回文件名。
     constexpr const char* file_name() const noexcept {
         return file_name_;
     }
 
+    /// 返回函数名。
     constexpr const char* function_name() const noexcept {
         return function_name_;
     }
 
+    /// 返回行号。
     constexpr std::uint_least32_t line() const noexcept {
         return line_;
     }
 
+    /// 返回列号。
     constexpr std::uint_least32_t column() const noexcept {
         return column_;
     }
@@ -113,16 +152,19 @@ public:
 #define LTOOL_CURRENT_SOURCE_LOCATION ::LLog::SourceLocation(__FILE__, __LINE__, __func__)
 #endif
 
+/// 一条日志记录：等级、时间、线程、消息和来源位置。
 struct Record {
-    Level severity = Level::info;
-    std::chrono::system_clock::time_point time = std::chrono::system_clock::now();
-    std::thread::id thread_id {};
-    std::string message;
-    SourceLocation location = SourceLocation::current();
+    Level severity = Level::info;                                       ///< 日志等级。
+    std::chrono::system_clock::time_point time = std::chrono::system_clock::now(); ///< 记录时间。
+    std::thread::id thread_id {};                                        ///< 产生日志的线程。
+    std::string message;                                                ///< 日志消息。
+    SourceLocation location = SourceLocation::current();                ///< 来源位置。
 };
 
+/// 日志输出回调类型：接收一条 Record。
 using SinkType = std::function<void(const Record&)>;
 
+/// 返回等级的稳定大写显示名称。
 inline const char* level_name(Level severity) noexcept {
     switch (severity) {
     case Level::trace:
@@ -143,6 +185,7 @@ inline const char* level_name(Level severity) noexcept {
     }
 }
 
+/// 返回等级的 ANSI 终端颜色转义码。
 inline const char* level_color(Level severity) noexcept {
     switch (severity) {
     case Level::trace:
@@ -163,6 +206,7 @@ inline const char* level_color(Level severity) noexcept {
     }
 }
 
+/// 判断环境变量是否存在且非空。
 inline bool env_is_set(const char* name) {
 #if LTOOL_PLATFORM_WINDOWS
     char* value = nullptr;
@@ -177,6 +221,7 @@ inline bool env_is_set(const char* name) {
 #endif
 }
 
+/// 判断环境变量是否恰为字符串 "0"。
 inline bool env_is_zero(const char* name) {
 #if LTOOL_PLATFORM_WINDOWS
     char* value = nullptr;
@@ -191,6 +236,7 @@ inline bool env_is_zero(const char* name) {
 #endif
 }
 
+/// 判断文件句柄是否连接到一个终端。
 inline bool is_terminal(std::FILE* file) {
 #if LTOOL_PLATFORM_WINDOWS
     return file && _isatty(_fileno(file)) != 0;
@@ -199,6 +245,7 @@ inline bool is_terminal(std::FILE* file) {
 #endif
 }
 
+/// 结合 ColorMode 与环境变量（NO_COLOR/CLICOLOR*）决定是否着色。
 inline bool should_use_color(ColorMode mode, std::FILE* file) {
     if (mode == ColorMode::always) {
         return true;
@@ -212,11 +259,13 @@ inline bool should_use_color(ColorMode mode, std::FILE* file) {
     return is_terminal(file);
 }
 
+/// 判断 severity 是否达到 runtime_level 的开启阈值。
 inline bool is_enabled(Level runtime_level, Level severity) noexcept {
     return static_cast<int>(severity) >= static_cast<int>(runtime_level) &&
            severity != Level::off && runtime_level != Level::off;
 }
 
+/// 把 time_t 转换为线程安全的本地时间结构。
 inline std::tm local_time(std::time_t value) {
     std::tm out {};
 #if defined(_WIN32)
@@ -227,6 +276,7 @@ inline std::tm local_time(std::time_t value) {
     return out;
 }
 
+/// 把一条 Record 格式化为一行文本；可选来源位置和颜色。
 inline std::string format_record(const Record& item, bool with_location, bool with_color = false) {
     auto tt = std::chrono::system_clock::to_time_t(item.time);
     auto tm = local_time(tt);
@@ -273,14 +323,18 @@ inline std::string format_record(const Record& item, bool with_location, bool wi
     return out.str();
 }
 
+/**
+ * @brief 线程安全的日志器；配置等级、位置显示、颜色和输出 sink。
+ */
 class Logger {
 private:
-    mutable std::mutex mutex_;
-    Level min_level_ = Level::info;
-    bool with_location_ = false;
-    ColorMode color_mode_ = ColorMode::automatic;
-    SinkType sink_;
+    mutable std::mutex mutex_;      ///< 保护内部状态的锁。
+    Level min_level_ = Level::info; ///< 当前最低输出等级。
+    bool with_location_ = false;    ///< 是否在输出中包含来源位置。
+    ColorMode color_mode_ = ColorMode::automatic; ///< 颜色策略。
+    SinkType sink_;                 ///< 自定义输出回调；为空时使用默认控制台输出。
 
+    /// 默认输出：warn 及以上写 stderr，其余写 stdout。
     static void default_sink(const Record& item, bool with_location, ColorMode colors) {
         bool to_error = static_cast<int>(item.severity) >= static_cast<int>(Level::warn);
         std::FILE* file = to_error ? stderr : stdout;
@@ -290,57 +344,69 @@ private:
     }
 
 public:
+    /// 构造默认配置的日志器。
     Logger() = default;
 
+    /// 设置最低输出等级。
     void set_level(Level value) {
         std::lock_guard<std::mutex> lock(mutex_);
         min_level_ = value;
     }
 
+    /// 返回当前最低输出等级。
     Level min_level() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return min_level_;
     }
 
+    /// 设置是否在输出中包含来源位置。
     void set_location_visible(bool value) {
         std::lock_guard<std::mutex> lock(mutex_);
         with_location_ = value;
     }
 
+    /// 返回当前是否显示来源位置。
     bool location_visible() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return with_location_;
     }
 
+    /// 设置颜色策略。
     void set_color_mode(ColorMode value) {
         std::lock_guard<std::mutex> lock(mutex_);
         color_mode_ = value;
     }
 
+    /// 颜色开关便捷版：true 始终着色，false 永不着色。
     void set_color_enabled(bool value) {
         set_color_mode(value ? ColorMode::always : ColorMode::never);
     }
 
+    /// 返回当前颜色策略。
     ColorMode colors() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return color_mode_;
     }
 
+    /// 设置自定义输出 sink；为空时回退到默认控制台输出。
     void set_sink(SinkType sink) {
         std::lock_guard<std::mutex> lock(mutex_);
         sink_ = std::move(sink);
     }
 
+    /// 清空自定义 sink，恢复默认控制台输出。
     void reset_sink() {
         std::lock_guard<std::mutex> lock(mutex_);
         sink_ = nullptr;
     }
 
+    /// 判断指定等级当前是否开启。
     bool enabled(Level severity) const {
         std::lock_guard<std::mutex> lock(mutex_);
         return is_enabled(min_level_, severity);
     }
 
+    /// 写一条日志记录；未开启或设置禁用时直接返回。
     void write(Level severity, const std::string& message,
                SourceLocation location = SourceLocation::current()) {
         SinkType sink;
@@ -372,11 +438,13 @@ public:
         }
     }
 
+    /// 写一条 C 字符串日志记录。
     void write(Level severity, const char* message,
                SourceLocation location = SourceLocation::current()) {
         write(severity, std::string(message ? message : ""), location);
     }
 
+    /// 用 fmt 格式串写一条日志记录。
     template<class... Args>
     void writef(Level severity, SourceLocation location, fmt::format_string<Args...> fmt_text,
                 Args&&... args) {
@@ -387,99 +455,122 @@ public:
     }
 };
 
+/// 返回进程级默认日志器（单例）。
 inline Logger& default_logger() {
     static Logger instance;
     return instance;
 }
 
+/// 设置默认日志器的最低输出等级。
 inline void set_level(Level value) {
     default_logger().set_level(value);
 }
 
+/// 设置默认日志器是否显示来源位置。
 inline void set_location_visible(bool value) {
     default_logger().set_location_visible(value);
 }
 
+/// 设置默认日志器的颜色策略。
 inline void set_color_mode(ColorMode value) {
     default_logger().set_color_mode(value);
 }
 
+/// 设置默认日志器颜色开关。
 inline void set_color_enabled(bool value) {
     default_logger().set_color_enabled(value);
 }
 
+/// 设置默认日志器的自定义 sink。
 inline void set_sink(SinkType sink) {
     default_logger().set_sink(std::move(sink));
 }
 
+/// 清空默认日志器的自定义 sink。
 inline void reset_sink() {
     default_logger().reset_sink();
 }
 
+/// 判断默认日志器是否开启指定等级。
 inline bool enabled(Level severity) {
     return default_logger().enabled(severity);
 }
 
+/// 用默认日志器写一条字符串日志。
 inline void write(Level severity, const std::string& message,
                   SourceLocation location = SourceLocation::current()) {
     default_logger().write(severity, message, location);
 }
 
+/// 用默认日志器写一条 C 字符串日志。
 inline void write(Level severity, const char* message,
                   SourceLocation location = SourceLocation::current()) {
     default_logger().write(severity, message, location);
 }
 
+/// 用默认日志器按 fmt 格式串写日志。
 template<class... Args>
 inline void writef(Level severity, SourceLocation location, fmt::format_string<Args...> fmt_text,
                    Args&&... args) {
     default_logger().writef(severity, location, fmt_text, std::forward<Args>(args)...);
 }
 
+/// 输出 trace 级日志。
 inline void trace(const std::string& message, SourceLocation location = SourceLocation::current()) {
     write(Level::trace, message, location);
 }
 
+/// 输出 trace 级日志（C 字符串版本）。
 inline void trace(const char* message, SourceLocation location = SourceLocation::current()) {
     write(Level::trace, message, location);
 }
 
+/// 输出 debug 级日志。
 inline void debug(const std::string& message, SourceLocation location = SourceLocation::current()) {
     write(Level::debug, message, location);
 }
 
+/// 输出 debug 级日志（C 字符串版本）。
 inline void debug(const char* message, SourceLocation location = SourceLocation::current()) {
     write(Level::debug, message, location);
 }
 
+/// 输出 info 级日志。
 inline void info(const std::string& message, SourceLocation location = SourceLocation::current()) {
     write(Level::info, message, location);
 }
 
+/// 输出 info 级日志（C 字符串版本）。
 inline void info(const char* message, SourceLocation location = SourceLocation::current()) {
     write(Level::info, message, location);
 }
 
+/// 输出 warn 级日志。
 inline void warn(const std::string& message, SourceLocation location = SourceLocation::current()) {
     write(Level::warn, message, location);
 }
 
+/// 输出 warn 级日志（C 字符串版本）。
 inline void warn(const char* message, SourceLocation location = SourceLocation::current()) {
     write(Level::warn, message, location);
 }
 
+/// 输出 error 级日志。
 inline void error(const std::string& message, SourceLocation location = SourceLocation::current()) {
     write(Level::error, message, location);
 }
 
+/// 输出 error 级日志（C 字符串版本）。
 inline void error(const char* message, SourceLocation location = SourceLocation::current()) {
     write(Level::error, message, location);
 }
 
+/// 输出 fatal 级日志。
 inline void fatal(const std::string& message, SourceLocation location = SourceLocation::current()) {
     write(Level::fatal, message, location);
 }
 
+/// 输出 fatal 级日志（C 字符串版本）。
 inline void fatal(const char* message, SourceLocation location = SourceLocation::current()) {
     write(Level::fatal, message, location);
 }

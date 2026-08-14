@@ -125,10 +125,12 @@ inline void ensure_parent_directory(const std::filesystem::path& path) {
 }
 
 inline std::uint64_t random_u64() {
-    static std::random_device rd;
-    static std::mt19937_64 gen(rd());
-    static std::uniform_int_distribution<std::uint64_t> dist;
-    return dist(gen);
+    static thread_local std::mt19937_64 gen = [] {
+        std::random_device rd;
+        std::seed_seq seed {rd(), rd(), rd(), rd()};
+        return std::mt19937_64(seed);
+    }();
+    return gen();
 }
 
 inline std::string unique_token() {
@@ -625,7 +627,7 @@ public:
         return std::filesystem::temp_directory_path();
     }
 
-    /// 生成一个当前尚不存在的临时路径；不会创建文件或目录。
+    /// 生成一个当前尚不存在的临时路径；不会创建或保留文件，需由调用方原子创建。
     static LPath temp_path(LStringDetail::string_view prefix = "LPath-",
                            LStringDetail::string_view extension = ".tmp") {
         auto dir = temp_directory().path();

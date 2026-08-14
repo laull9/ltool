@@ -33,7 +33,10 @@
 #include <utility>
 
 #if LTOOL_PLATFORM_WINDOWS
-#include <stdlib.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #endif
 
 /**
@@ -48,16 +51,24 @@ struct LEnvOptions {
 
 namespace LEnvDetail {
 
+/// 读取进程环境变量到 out；不存在返回 false。
 inline bool read_process_env(const char* key, std::string& out) {
 #if LTOOL_PLATFORM_WINDOWS
-    char* value = nullptr;
-    std::size_t size = 0;
-    if (_dupenv_s(&value, &size, key) != 0 || value == nullptr) {
-        std::free(value);
+    ::SetLastError(ERROR_SUCCESS);
+    const DWORD size = ::GetEnvironmentVariableA(key, nullptr, 0);
+    if (size == 0 && ::GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
         return false;
     }
-    out.assign(value);
-    std::free(value);
+    if (size == 0) {
+        out.clear();
+        return true;
+    }
+    std::string value(size, '\0');
+    const DWORD copied = ::GetEnvironmentVariableA(key, &value[0], size);
+    if (copied >= size) {
+        return false;
+    }
+    out.assign(value.data(), copied);
     return true;
 #else
     const char* value = std::getenv(key);
@@ -69,19 +80,23 @@ inline bool read_process_env(const char* key, std::string& out) {
 #endif
 }
 
+/// 判断字符是否为空白。
 inline bool is_space(char ch) {
     return std::isspace(static_cast<unsigned char>(ch)) != 0;
 }
 
+/// 判断字符可否作为变量名首字符。
 inline bool is_name_first(char ch) {
     return std::isalpha(static_cast<unsigned char>(ch)) != 0 || ch == '_';
 }
 
+/// 判断字符可否作为变量名后续字符。
 inline bool is_name_char(char ch) {
     return std::isalnum(static_cast<unsigned char>(ch)) != 0 || ch == '_' || ch == '.' ||
            ch == '-';
 }
 
+/// 移除字符串开头的空白并返回副本。
 inline std::string ltrim(std::string text) {
     std::size_t pos = 0;
     while (pos < text.size() && is_space(text[pos])) {
@@ -91,6 +106,7 @@ inline std::string ltrim(std::string text) {
     return text;
 }
 
+/// 移除字符串结尾的空白并返回副本。
 inline std::string rtrim(std::string text) {
     while (!text.empty() && is_space(text.back())) {
         text.pop_back();
@@ -98,10 +114,12 @@ inline std::string rtrim(std::string text) {
     return text;
 }
 
+/// 移除首尾空白并返回副本。
 inline std::string trim(std::string text) {
     return rtrim(ltrim(std::move(text)));
 }
 
+/// 判断 text 是否以 prefix 开头。
 inline bool starts_with(const std::string& text, const char* prefix) {
     std::size_t i = 0;
     while (prefix[i] != '\0') {
@@ -113,6 +131,7 @@ inline bool starts_with(const std::string& text, const char* prefix) {
     return true;
 }
 
+/// 构造带来源和行号的解析错误异常。
 inline std::runtime_error parse_error(const std::string& source, std::size_t line,
                                       const std::string& message) {
     std::ostringstream out;
@@ -124,6 +143,7 @@ inline std::runtime_error parse_error(const std::string& source, std::size_t lin
     return std::runtime_error(out.str());
 }
 
+/// 校验 key 是否符合 .env 变量命名规则。
 inline bool valid_key(const std::string& key) {
     if (key.empty() || !is_name_first(key[0])) {
         return false;
@@ -136,10 +156,12 @@ inline bool valid_key(const std::string& key) {
     return true;
 }
 
+/// 判断字符是否为 ${VAR} 展开的合法名称字符。
 inline bool is_expand_name_char(char ch) {
     return std::isalnum(static_cast<unsigned char>(ch)) != 0 || ch == '_';
 }
 
+/// 按 key 查找值：先查内存 map，再退回进程环境变量。
 inline std::string lookup_value(const std::map<std::string, std::string>& values,
                                 const std::string& key) {
     auto it = values.find(key);
@@ -150,6 +172,7 @@ inline std::string lookup_value(const std::map<std::string, std::string>& values
     return read_process_env(key.c_str(), env) ? env : std::string();
 }
 
+/// 展开 value 中的 ${KEY} 与 $KEY 变量引用。
 inline std::string expand_vars(const std::string& value,
                                const std::map<std::string, std::string>& values) {
     std::string out;
@@ -188,6 +211,7 @@ inline std::string expand_vars(const std::string& value,
     return out;
 }
 
+/// 反转义双引号字符串中的 \n \r \t 等转义序列。
 inline std::string unescape_double_quoted(const std::string& value) {
     std::string out;
     out.reserve(value.size());
@@ -223,6 +247,7 @@ inline std::string unescape_double_quoted(const std::string& value) {
     return out;
 }
 
+/// 解析未加引号的值：遇到行尾注释（#）截断，并移除尾部空白。
 inline std::string parse_unquoted_value(const std::string& text) {
     std::string out;
     out.reserve(text.size());
@@ -237,6 +262,7 @@ inline std::string parse_unquoted_value(const std::string& text) {
     return rtrim(std::move(out));
 }
 
+/// 解析单引号或双引号包裹的值；引号后有多余内容或缺少闭合引号会抛异常。
 inline std::string parse_quoted_value(const std::string& text, std::size_t line,
                                       const std::string& source) {
     const char quote = text[0];
@@ -441,7 +467,7 @@ public:
             }
         }
 #if LTOOL_PLATFORM_WINDOWS
-        return _putenv_s(key.c_str(), value.c_str()) == 0;
+        return ::SetEnvironmentVariableA(key.c_str(), value.c_str()) != 0;
 #else
         return ::setenv(key.c_str(), value.c_str(), overwrite ? 1 : 0) == 0;
 #endif
@@ -452,13 +478,14 @@ public:
      */
     static bool unset_env(const std::string& key) {
 #if LTOOL_PLATFORM_WINDOWS
-        return _putenv_s(key.c_str(), "") == 0;
+        return ::SetEnvironmentVariableA(key.c_str(), nullptr) != 0;
 #else
         return ::unsetenv(key.c_str()) == 0;
 #endif
     }
 
 private:
+    /// 解析单行 .env 文本并合并到 values_。
     void parse_line(std::string line, std::size_t line_no, LEnvOptions options,
                     const std::string& source) {
         line = LEnvDetail::ltrim(std::move(line));
@@ -466,21 +493,25 @@ private:
             return;
         }
 
+        // 去掉可选的 export 前缀。
         if (LEnvDetail::starts_with(line, "export") &&
             (line.size() == 6 || LEnvDetail::is_space(line[6]))) {
             line = LEnvDetail::ltrim(line.substr(6));
         }
 
+        // 定位 '=' 分隔符。
         const std::size_t eq = line.find('=');
         if (eq == std::string::npos) {
             throw LEnvDetail::parse_error(source, line_no, "missing '='");
         }
 
+        // 校验变量名。
         std::string key = LEnvDetail::trim(line.substr(0, eq));
         if (!LEnvDetail::valid_key(key)) {
             throw LEnvDetail::parse_error(source, line_no, "invalid key: " + key);
         }
 
+        // 按引号/非引号两种方式解析值。
         std::string raw = LEnvDetail::ltrim(line.substr(eq + 1));
         std::string value;
         if (raw.empty()) {
@@ -491,13 +522,14 @@ private:
             value = LEnvDetail::parse_unquoted_value(raw);
         }
 
+        // 按选项展开 ${VAR}/$VAR 引用。
         if (options.expand) {
             value = LEnvDetail::expand_vars(value, values_);
         }
         values_[std::move(key)] = std::move(value);
     }
 
-    map_type values_;
+    map_type values_; ///< 内存中的 .env 配置集合。
 };
 
 namespace LTool {

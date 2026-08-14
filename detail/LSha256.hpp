@@ -269,6 +269,9 @@ public:
         if (size == 0) {
             return;
         }
+        if (!data) {
+            throw std::invalid_argument("Sha256 cannot read null data");
+        }
 
         auto bytes = static_cast<const unsigned char*>(data);
         bit_count_ += static_cast<std::uint64_t>(size) * 8U;

@@ -219,7 +219,7 @@ public:
 
     LScopeTimer& operator=(LScopeTimer&& other) noexcept {
         if (this != &other) {
-            finish();
+            finish_noexcept();
             timer_ = other.timer_;
             callback_ = std::move(other.callback_);
             active_ = other.active_;
@@ -228,8 +228,8 @@ public:
         return *this;
     }
 
-    ~LScopeTimer() {
-        finish();
+    ~LScopeTimer() noexcept {
+        finish_noexcept();
     }
 
     const LTimer& timer() const noexcept {
@@ -250,6 +250,13 @@ public:
     }
 
 private:
+    void finish_noexcept() noexcept {
+        try {
+            finish();
+        } catch (...) {
+        }
+    }
+
     LTimer timer_;
     callback_type callback_;
     bool active_;

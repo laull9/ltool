@@ -44,15 +44,18 @@
 template<BS::tp Flags = BS::tp::none>
 class BasicLThreadPool {
 public:
-    using native_type = BS::thread_pool<Flags>;
-    using priority_t = BS::priority_t;
+    using native_type = BS::thread_pool<Flags>; ///< 底层 BS_thread_pool 类型。
+    using priority_t = BS::priority_t;          ///< 任务优先级类型。
 
+    /// 默认构造：按硬件并发数创建线程池。
     BasicLThreadPool()
         : pool_() {}
 
+    /// 用指定线程数创建线程池。
     explicit BasicLThreadPool(std::size_t threads)
         : pool_(threads) {}
 
+    /// 传入初始化回调（在线程启动时执行）创建线程池。
     template<class F
              LTOOL_ENABLE_IF(std::is_invocable<F>::value ||
                              std::is_invocable<F, std::size_t>::value)>
@@ -60,6 +63,7 @@ public:
     explicit BasicLThreadPool(F&& init)
         : pool_(std::forward<F>(init)) {}
 
+    /// 用指定线程数和初始化回调创建线程池。
     template<class F
              LTOOL_ENABLE_IF(std::is_invocable<F>::value ||
                              std::is_invocable<F, std::size_t>::value)>
@@ -67,33 +71,41 @@ public:
     BasicLThreadPool(std::size_t threads, F&& init)
         : pool_(threads, std::forward<F>(init)) {}
 
+    /// 禁止复制。
     BasicLThreadPool(const BasicLThreadPool&) = delete;
     BasicLThreadPool& operator=(const BasicLThreadPool&) = delete;
 
+    /// 访问底层线程池的可写引用。
     native_type& native() noexcept {
         return pool_;
     }
 
+    /// 访问底层线程池的只读引用。
     const native_type& native() const noexcept {
         return pool_;
     }
 
+    /// 返回线程池工作线程数。
     std::size_t size() const noexcept {
         return pool_.get_thread_count();
     }
 
+    /// size() 的同义函数。
     std::size_t thread_count() const noexcept {
         return pool_.get_thread_count();
     }
 
+    /// 返回等待执行的任务数量。
     std::size_t queued() const {
         return pool_.get_tasks_queued();
     }
 
+    /// 返回正在执行的任务数量。
     std::size_t running() const {
         return pool_.get_tasks_running();
     }
 
+    /// 返回排队与执行中的任务总数。
     std::size_t pending() const {
         return pool_.get_tasks_total();
     }
@@ -118,6 +130,7 @@ public:
         pool_.detach_task(std::forward<F>(fn), priority);
     }
 
+    /// post() 的同义函数。
     template<class F LTOOL_ENABLE_IF(std::is_invocable<std::decay_t<F>>::value)>
         LTOOL_REQUIRES(std::invocable<std::decay_t<F>>)
     void detach(F&& fn, priority_t priority = 0) {
@@ -149,31 +162,42 @@ public:
      * @brief 等待当前线程池所有已提交任务完成。
      */
     void wait() {
+        ensure_not_worker_thread();
         pool_.wait();
     }
 
+    /// 等待任务完成，最多等待 duration；超时返回 false。
     template<class Rep, class Period>
     bool wait_for(const std::chrono::duration<Rep, Period>& duration) {
+        ensure_not_worker_thread();
         return pool_.wait_for(duration);
     }
 
+    /// 等待任务完成直到 time_point；超时返回 false。
     template<class Clock, class Duration>
     bool wait_until(const std::chrono::time_point<Clock, Duration>& time_point) {
+        ensure_not_worker_thread();
         return pool_.wait_until(time_point);
     }
 
+    /// 丢弃尚未开始执行的排队任务。
     void purge() {
+        // purge() discards queued work. Do not wait on futures returned for
+        // discarded tasks: BS_thread_pool cannot complete those shared states.
         pool_.purge();
     }
 
+    /// 重置线程池（丢弃状态、等待中的任务按当前配置重新初始化）。
     void reset() {
         pool_.reset();
     }
 
+    /// 重置线程池并调整线程数。
     void reset(std::size_t threads) {
         pool_.reset(threads);
     }
 
+    /// 重置线程池并传入新的初始化回调。
     template<class F
              LTOOL_ENABLE_IF(std::is_invocable<F>::value ||
                              std::is_invocable<F, std::size_t>::value)>
@@ -183,19 +207,32 @@ public:
     }
 
 private:
-    native_type pool_;
+    /// 防止在工作线程内等待本线程池导致死锁；否则抛出 BS::wait_deadlock。
+    void ensure_not_worker_thread() const {
+        const auto current_pool = BS::this_thread::get_pool();
+        if (current_pool && *current_pool ==
+                                static_cast<void*>(const_cast<native_type*>(&pool_))) {
+            throw BS::wait_deadlock();
+        }
+    }
+
+    native_type pool_; ///< 底层 BS_thread_pool 实例。
 };
 
+/// 默认线程池：无扩展特性。
 using LThreadPool = BasicLThreadPool<>;
+/// 支持任务优先级的线程池。
 using LPriorityThreadPool = BasicLThreadPool<BS::tp::priority>;
+/// 支持暂停/恢复的线程池。
 using LPauseThreadPool = BasicLThreadPool<BS::tp::pause>;
+/// 启用死锁检测的线程池。
 using LWaitDeadlockThreadPool = BasicLThreadPool<BS::tp::wait_deadlock_checks>;
 
 namespace LTool {
-using ThreadPool = ::LThreadPool;
-using PriorityThreadPool = ::LPriorityThreadPool;
-using PauseThreadPool = ::LPauseThreadPool;
-using WaitDeadlockThreadPool = ::LWaitDeadlockThreadPool;
+using ThreadPool = ::LThreadPool;                         ///< 线程池别名。
+using PriorityThreadPool = ::LPriorityThreadPool;         ///< 优先级线程池别名。
+using PauseThreadPool = ::LPauseThreadPool;               ///< 可暂停线程池别名。
+using WaitDeadlockThreadPool = ::LWaitDeadlockThreadPool; ///< 死锁检测线程池别名。
 } // namespace LTool
 
 #endif // LTOOL_LTHREAD_POOL_INCLUDE
