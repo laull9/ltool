@@ -328,6 +328,12 @@
 #define LTOOL_HAS_BARKEEP 0
 #endif
 
+#if LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE("../pkgs/cinatra/cinatra.hpp")
+#define LTOOL_HAS_CINATRA 1
+#else
+#define LTOOL_HAS_CINATRA 0
+#endif
+
 #if LTOOL_USE_RFL_JSON && LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE("../pkgs/rfl/json.hpp")
 #define LTOOL_HAS_BUNDLED_RFL_JSON 1
 #define LTOOL_HAS_RFL_JSON 1

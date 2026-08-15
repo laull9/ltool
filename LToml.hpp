@@ -8,7 +8,8 @@
  * 主要接口：
  * - read<T>() / read_or_throw<T>() / to<T>() ：文本/字符串 -> 结构体。
  * - write<T>() / from<T>()                  ：结构体 -> TOML 文本。
- * - load<T>() / save<T>()                   ：文件往返。
+ * - load<T>() / save<T>()                   ：文件往返（反射结构体）。
+ * - from_file() / to_file()                 ：文件往返（文本持有类型与反射结构体）。
  * - Toml / TomlView                         ：TOML 文本的持有/零拷贝视图。
  *
  * 常用示例：
@@ -19,6 +20,10 @@
  * auto text = LToml::write(srv);
  * auto srv2 = LToml::load<Server>("config.toml");
  * LToml::save("out.toml", srv2);
+ * auto toml = LToml::from_file("config.toml");   // 文本持有类型
+ * auto srv3 = LToml::from_file<Server>("config.toml"); // 反射结构体
+ * LToml::to_file("out.toml", toml);
+ * LToml::to_file("out.toml", srv3);
  * @endcode
  */
 
@@ -31,15 +36,24 @@
 #include <cstddef>
 #include <cstring>
 #include <fstream>
+#include <ostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
+
+#include "detail/LFmt.hpp"
+
+#if LTOOL_HAS_CPP20 && LTOOL_HAS_INCLUDE(<format>)
+#include <format>
+#endif
 
 #define LTOML_HAS_RFL_TOML LTOOL_HAS_RFL_TOML
 #define LTOML_HAS_BUNDLED_RFL_TOML LTOOL_HAS_BUNDLED_RFL_TOML
 #define LTOML_HAS_STATIC_REFLECTION LTOOL_HAS_RFL_TOML
+#define LTOML_HAS_STD_FORMAT LTOOL_HAS_STD_FORMAT
 
 #if LTOML_HAS_RFL_TOML
 #if LTOML_HAS_BUNDLED_RFL_TOML
@@ -48,6 +62,20 @@
 #include <rfl/toml.hpp>
 #endif
 #endif
+
+namespace LToml {
+class Toml;
+} // namespace LToml
+
+// Declare the formatter before Toml's constrained conversion constructors.
+// fmt::is_formattable<LToml::Toml, char> may otherwise instantiate the primary
+// formatter first, which makes the specialization at the end of this header
+// ill-formed on Clang/clang-cl.
+template<>
+struct fmt::formatter<LToml::Toml> : fmt::formatter<fmt::string_view> {
+    template<class FormatContext>
+    typename FormatContext::iterator format(const LToml::Toml& value, FormatContext& ctx) const;
+};
 
 namespace LToml {
 
@@ -245,6 +273,76 @@ public:
         return text_.empty();
     }
 
+    /// 与另一个 Toml 文本比较。
+    friend bool operator==(const Toml& lhs, const Toml& rhs) {
+        return lhs.text_ == rhs.text_;
+    }
+
+    /// 与另一个 Toml 文本不等比较。
+    friend bool operator!=(const Toml& lhs, const Toml& rhs) {
+        return !(lhs == rhs);
+    }
+
+    /// 与 std::string 比较。
+    friend bool operator==(const Toml& lhs, const std::string& rhs) {
+        return lhs.text_ == rhs;
+    }
+
+    /// 与 std::string 比较（反向）。
+    friend bool operator==(const std::string& lhs, const Toml& rhs) {
+        return lhs == rhs.text_;
+    }
+
+    /// 与 std::string 不等比较。
+    friend bool operator!=(const Toml& lhs, const std::string& rhs) {
+        return !(lhs == rhs);
+    }
+
+    /// 与 std::string 不等比较（反向）。
+    friend bool operator!=(const std::string& lhs, const Toml& rhs) {
+        return !(lhs == rhs);
+    }
+
+    /// 与 std::string_view 比较；避免与模板构造产生跨编译器歧义。
+    friend bool operator==(const Toml& lhs, std::string_view rhs) {
+        return lhs.text_ == rhs;
+    }
+
+    /// 与 std::string_view 比较（反向）。
+    friend bool operator==(std::string_view lhs, const Toml& rhs) {
+        return lhs == rhs.text_;
+    }
+
+    /// 与 std::string_view 不等比较。
+    friend bool operator!=(const Toml& lhs, std::string_view rhs) {
+        return !(lhs == rhs);
+    }
+
+    /// 与 std::string_view 不等比较（反向）。
+    friend bool operator!=(std::string_view lhs, const Toml& rhs) {
+        return !(lhs == rhs);
+    }
+
+    /// 与 C 字符串比较；nullptr 视为空串。
+    friend bool operator==(const Toml& lhs, const char* rhs) {
+        return lhs.text_ == (rhs ? rhs : "");
+    }
+
+    /// 与 C 字符串比较（反向）。
+    friend bool operator==(const char* lhs, const Toml& rhs) {
+        return (lhs ? lhs : "") == rhs.text_;
+    }
+
+    /// 与 C 字符串不等比较。
+    friend bool operator!=(const Toml& lhs, const char* rhs) {
+        return !(lhs == rhs);
+    }
+
+    /// 与 C 字符串不等比较（反向）。
+    friend bool operator!=(const char* lhs, const Toml& rhs) {
+        return !(lhs == rhs);
+    }
+
     /// 返回当前文本的零拷贝视图。
     TomlView view() const noexcept {
         return TomlView(data(), size());
@@ -262,6 +360,12 @@ public:
 
     /// 返回文本副本。
     std::string to_string() const {
+        return text_;
+    }
+
+    /// to_string() 的别名；TOML 文本格式由后端固定，不接受缩进参数。
+    std::string dump(int indent = -1) const {
+        LTOOL_UNUSED(indent);
         return text_;
     }
 
@@ -485,6 +589,24 @@ inline void save(const std::string& path, const T& value) {
     detail::write_file_text(path, write(value));
 }
 
+/// 从文件读取 TOML 文本并反序列化为结构体；失败时抛出异常。
+template<class T>
+inline T from_file(const std::string& path) {
+    return read_or_throw<T>(detail::read_file_text(path));
+}
+
+/// 用反射序列化结构体并写入文件。
+template<class T
+         LTOOL_ENABLE_IF(!std::is_array<detail::remove_cvref_t<T>>::value &&
+                         !std::is_same<detail::remove_cvref_t<T>, std::string>::value &&
+                         !std::is_same<detail::remove_cvref_t<T>, const char*>::value)>
+    LTOOL_REQUIRES(!std::is_array_v<detail::remove_cvref_t<T>> &&
+                   !std::same_as<detail::remove_cvref_t<T>, std::string> &&
+                   !std::same_as<detail::remove_cvref_t<T>, const char*>)
+inline void to_file(const std::string& path, const T& value) {
+    detail::write_file_text(path, write(value));
+}
+
 #else
 
 /// 反射序列化；缺少依赖时编译期报错。
@@ -503,8 +625,62 @@ inline T read_or_throw(const std::string&) {
     return T();
 }
 
+/// 从文件读取 TOML 文本并反序列化为结构体；缺少依赖时编译期报错。
+template<class T>
+inline T from_file(const std::string& path) {
+    LTOOL_UNUSED(path);
+    static_assert(detail::dependent_false<T>::value,
+                  "LToml::from_file<T> requires C++20 and reflect-cpp rfl/toml");
+    return T();
+}
+
+/// 用反射序列化结构体并写入文件；缺少依赖时编译期报错。
+template<class T>
+inline void to_file(const std::string& path, const T& value) {
+    LTOOL_UNUSED(path);
+    LTOOL_UNUSED(value);
+    static_assert(detail::dependent_false<T>::value,
+                  "LToml::to_file<T> requires C++20 and reflect-cpp rfl/toml");
+}
+
 #endif
 
+/// 从文件读取 TOML 文本并包装为 Toml。
+inline Toml from_file(const std::string& path) {
+    return Toml(detail::read_file_text(path));
+}
+
+/// 把 Toml 持有的 TOML 文本写入文件。
+inline void to_file(const std::string& path, const Toml& value) {
+    detail::write_file_text(path, value.to_string());
+}
+
+/// 把 Toml 文本写入输出流。
+inline std::ostream& operator<<(std::ostream& os, const Toml& value) {
+    return os << value.to_string();
+}
+
 } // namespace LToml
+
+/// fmt 格式化器：LToml::Toml 按文本内容输出。
+template<class FormatContext>
+typename FormatContext::iterator fmt::formatter<LToml::Toml>::format(
+    const LToml::Toml& value, FormatContext& ctx) const {
+    const auto text = value.to_string();
+    return fmt::formatter<fmt::string_view>::format(
+        fmt::string_view(text.data(), text.size()), ctx);
+}
+
+#if LTOML_HAS_STD_FORMAT
+/// std::format 格式化器：LToml::Toml 按文本内容输出。
+template<>
+struct std::formatter<LToml::Toml, char> : std::formatter<std::string_view, char> {
+    template<class FormatContext>
+    auto format(const LToml::Toml& value, FormatContext& ctx) const {
+        const auto text = value.to_string();
+        return std::formatter<std::string_view, char>::format(std::string_view(text), ctx);
+    }
+};
+#endif
 
 #endif // LTOOL_LTOML_INCLUDE

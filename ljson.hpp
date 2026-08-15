@@ -11,6 +11,7 @@
  * - parse()         ：解析 JSON 文本为 Json DOM。
  * - write()/dump()  ：把 Json 或反射结构体序列化为文本。
  * - read<T>()       ：用 rfl 反射把文本反序列化为结构体。
+ * - from_file()/to_file()：文件往返（Json DOM 与反射结构体）。
  * - 下标访问        ：operator[](key/index)、at()、[] 赋值、深度查找。
  *
  * 常用示例：
@@ -23,6 +24,10 @@
  * struct Config { std::string name; std::vector<int> nums; };
  * auto cfg = LJson::read<Config>(text);     // 反射反序列化
  * auto out = LJson::write(cfg);             // 反射序列化
+ * auto from_disk = LJson::from_file("cfg.json");   // Json DOM
+ * auto cfg2 = LJson::from_file<Config>("cfg.json");// 反射结构体
+ * LJson::to_file("out.json", from_disk);
+ * LJson::to_file("out.json", cfg2);
  * @endcode
  */
 
@@ -39,6 +44,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <memory>
 #include <limits>
@@ -388,6 +394,34 @@ inline void append_mutable_json(std::string& out, yyjson_mut_val* value) {
     }
 }
 #endif
+
+/// 以二进制模式读取整个文件文本。
+inline std::string read_file_text(const std::string& path) {
+    std::ifstream in(path.c_str(), std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("LJson failed to open file: " + path);
+    }
+    std::ostringstream out;
+    out << in.rdbuf();
+    return out.str();
+}
+
+/// 以二进制模式把文本整体写入文件。
+inline void write_file_text(const std::string& path, const std::string& text) {
+    std::ofstream out(path.c_str(), std::ios::binary);
+    if (!out) {
+        throw std::runtime_error("LJson failed to open file for writing: " + path);
+    }
+    out << text;
+    out.flush();
+    if (!out) {
+        throw std::runtime_error("LJson failed to write file: " + path);
+    }
+    out.close();
+    if (!out) {
+        throw std::runtime_error("LJson failed to close file: " + path);
+    }
+}
 
 } // namespace detail
 
@@ -2507,6 +2541,16 @@ inline std::string to_string(const Json& value) {
     return value.str();
 }
 
+/// 从文件读取 JSON 文本并解析为 Json DOM。
+inline Json from_file(const std::string& path) {
+    return Json::parse(detail::read_file_text(path));
+}
+
+/// 把 Json DOM 序列化后写入文件。
+inline void to_file(const std::string& path, const Json& value) {
+    detail::write_file_text(path, value.to_string());
+}
+
 #if LJSON_HAS_NLOHMANN_JSON
 
 /// 用 nlohmann 解析 JSON 文本。
@@ -2853,6 +2897,24 @@ inline T to(const char* text) {
     return read_or_throw<T>(text);
 }
 
+/// 从文件读取 JSON 文本并反序列化为结构体；失败时抛出异常。
+template<class T>
+inline T from_file(const std::string& path) {
+    return read_or_throw<T>(detail::read_file_text(path));
+}
+
+/// 用反射序列化结构体并写入文件。
+template<class T
+         LTOOL_ENABLE_IF(!std::is_array<detail::remove_cvref_t<T>>::value &&
+                         !std::is_same<detail::remove_cvref_t<T>, std::string>::value &&
+                         !std::is_same<detail::remove_cvref_t<T>, const char*>::value)>
+    LTOOL_REQUIRES(!std::is_array_v<detail::remove_cvref_t<T>> &&
+                   !std::same_as<detail::remove_cvref_t<T>, std::string> &&
+                   !std::same_as<detail::remove_cvref_t<T>, const char*>)
+inline void to_file(const std::string& path, const T& value) {
+    detail::write_file_text(path, write(value));
+}
+
 #else
 
 /// 反射序列化；缺少依赖时编译期报错。
@@ -2949,6 +3011,24 @@ inline T to(const Json& text) {
 template<class T>
 inline T to(const char* text) {
     return read_or_throw<T>(text);
+}
+
+/// 从文件读取 JSON 文本并反序列化为结构体；缺少依赖时编译期报错。
+template<class T>
+inline T from_file(const std::string& path) {
+    LTOOL_UNUSED(path);
+    static_assert(detail::dependent_false<T>::value,
+                  "LJson::from_file<T> requires C++20 and reflect-cpp rfl/json");
+    return T();
+}
+
+/// 用反射序列化结构体并写入文件；缺少依赖时编译期报错。
+template<class T>
+inline void to_file(const std::string& path, const T& value) {
+    LTOOL_UNUSED(path);
+    LTOOL_UNUSED(value);
+    static_assert(detail::dependent_false<T>::value,
+                  "LJson::to_file<T> requires C++20 and reflect-cpp rfl/json");
 }
 
 #endif

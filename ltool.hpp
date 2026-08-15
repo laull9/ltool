@@ -24,6 +24,9 @@
  * - LProgress   ：终端等待动画/计数/进度条/状态消息（可选 barkeep）。
  * - LRange      ：range-v3 风格的 view 与聚合工具（可选 range-v3）。
  *
+ * 单独使用：LWeb 基于 Cinatra，需要额外 include 路径，不在本聚合入口中，
+ * 请直接 `#include "LWeb.hpp"`（详见 docs/LWeb.md）。
+ *
  * 常用示例：
  * @code
  * #include "LTool.hpp"
@@ -82,5 +85,8 @@
 #if LTOOL_HAS_THREAD_POOL
 #include "LThreadPool.hpp"
 #endif
+
+// 注意：LWeb 不在聚合入口中。它需要额外的 include 路径
+// （-I ltool/pkgs/cinatra），请直接 #include "LWeb.hpp" 单独使用。
 
 #endif // LTOOL_INCLUDE

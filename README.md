@@ -10,6 +10,7 @@
 - JSON DOM：`LJson::Json` 以随库提供的 yyjson 作为高性能强制后端；nlohmann/json、JsonCpp、simdjson 和 rfl 仅提供互操作接口。
 - 原生对话框：基于内置 portable-file-dialogs 的 `LDialog`，可打开文件、目录、消息框和桌面通知。
 - 终端进度显示：基于内置 barkeep 的 `LProgress`，提供等待动画、计数、进度条、状态消息与组合显示；进度条按终端宽度自适应（可设上限），默认显示已运行时间、速度与预估剩余时间。
+- Web 应用层：基于内置 Cinatra 的 `LWeb`，提供 Router/Controller/Response/JSON/Middleware 薄封装与 `Native()` 逃生通道（需 C++20，单独引入）。
 - 可选 ImGui facade：检测到 Dear ImGui 后，可通过 `LImGui.hpp` 快速接入 HelloImGui、字体、主题和常用小组件。
 - 尽量贴近标准库：类型和接口围绕 `std::string`、`std::filesystem::path`、`std::mutex` / `std::shared_mutex` 展开。
 - 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`、`portable-file-dialogs`、`barkeep.h`、`toml++` 和 `fkYAML`。
@@ -70,6 +71,7 @@ c++ -std=c++20 -I. demo.cpp -o demo -liconv
 | 随机数和 UUID | [LRandom](docs/LRandom.md) | `LRandom.hpp` |
 | 原生对话框 | [LDialog](docs/LDialog.md) | `LDialog.hpp` |
 | 加锁访问 | [Locked](docs/Locked.md) | `Locked.hpp` |
+| Web 应用层 | [LWeb](docs/LWeb.md) | `LWeb.hpp` |
 | ImGui facade | [LImGui](docs/LImGui.md) | `LImGui.hpp` |
 | 集成、依赖和开关 | [集成说明](docs/Integration.md) | `LTool.hpp`、`detail/LToolConfig.hpp`、`detail/LFmt.hpp` |
 
