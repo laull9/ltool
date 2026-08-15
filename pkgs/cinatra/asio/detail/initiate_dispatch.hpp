@@ -15,15 +15,15 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/associated_allocator.hpp"
-#include "asio/associated_executor.hpp"
-#include "asio/detail/work_dispatcher.hpp"
-#include "asio/execution/allocator.hpp"
-#include "asio/execution/blocking.hpp"
-#include "asio/prefer.hpp"
+#include "../../asio/detail/config.hpp"
+#include "../../asio/associated_allocator.hpp"
+#include "../../asio/associated_executor.hpp"
+#include "../../asio/detail/work_dispatcher.hpp"
+#include "../../asio/execution/allocator.hpp"
+#include "../../asio/execution/blocking.hpp"
+#include "../../asio/prefer.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -188,6 +188,6 @@ private:
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_DETAIL_INITIATE_DISPATCH_HPP

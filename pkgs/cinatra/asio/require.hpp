@@ -15,14 +15,14 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/is_applicable_property.hpp"
-#include "asio/traits/require_member.hpp"
-#include "asio/traits/require_free.hpp"
-#include "asio/traits/static_require.hpp"
+#include "../asio/detail/config.hpp"
+#include "../asio/detail/type_traits.hpp"
+#include "../asio/is_applicable_property.hpp"
+#include "../asio/traits/require_member.hpp"
+#include "../asio/traits/require_free.hpp"
+#include "../asio/traits/static_require.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 #if defined(GENERATING_DOCUMENTATION)
 
@@ -428,6 +428,6 @@ using require_result_t = typename require_result<T, Properties...>::type;
 
 #endif // defined(GENERATING_DOCUMENTATION)
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
 #endif // ASIO_REQUIRE_HPP

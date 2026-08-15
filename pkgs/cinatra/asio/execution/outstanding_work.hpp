@@ -15,18 +15,18 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/execution/executor.hpp"
-#include "asio/is_applicable_property.hpp"
-#include "asio/query.hpp"
-#include "asio/traits/query_free.hpp"
-#include "asio/traits/query_member.hpp"
-#include "asio/traits/query_static_constexpr_member.hpp"
-#include "asio/traits/static_query.hpp"
-#include "asio/traits/static_require.hpp"
+#include "../../asio/detail/config.hpp"
+#include "../../asio/detail/type_traits.hpp"
+#include "../../asio/execution/executor.hpp"
+#include "../../asio/is_applicable_property.hpp"
+#include "../../asio/query.hpp"
+#include "../../asio/traits/query_free.hpp"
+#include "../../asio/traits/query_member.hpp"
+#include "../../asio/traits/query_static_constexpr_member.hpp"
+#include "../../asio/traits/static_query.hpp"
+#include "../../asio/traits/static_require.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -748,6 +748,6 @@ struct static_query<T, execution::outstanding_work_t::tracked_t,
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_EXECUTION_OUTSTANDING_WORK_HPP

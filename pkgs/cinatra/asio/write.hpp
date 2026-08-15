@@ -15,18 +15,18 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../asio/detail/config.hpp"
 #include <cstddef>
-#include "asio/async_result.hpp"
-#include "asio/buffer.hpp"
-#include "asio/completion_condition.hpp"
-#include "asio/error.hpp"
+#include "../asio/async_result.hpp"
+#include "../asio/buffer.hpp"
+#include "../asio/completion_condition.hpp"
+#include "../asio/error.hpp"
 
 #if !defined(ASIO_NO_EXTENSIONS)
-# include "asio/basic_streambuf_fwd.hpp"
+# include "../asio/basic_streambuf_fwd.hpp"
 #endif // !defined(ASIO_NO_EXTENSIONS)
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -1519,8 +1519,8 @@ inline auto async_write(AsyncWriteStream& s, DynamicBuffer_v2 buffers,
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
-#include "asio/impl/write.hpp"
+#include "../asio/impl/write.hpp"
 
 #endif // ASIO_WRITE_HPP

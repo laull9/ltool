@@ -5,6 +5,29 @@ Source: https://github.com/oir/barkeep (v0.1.6, single-header `barkeep.h`)
 `pkgs/` is reserved for external code. LTool-owned progress display facades
 live in `ltool/LProgress.hpp`.
 
+## Cinatra include 本地化适配
+
+Source: https://github.com/qicosmos/cinatra (vendored at `pkgs/cinatra/`)
+
+ltool 约定"无外部声明"：使用方只需 `-I ltool`（或把 ltool 复制进项目），
+头文件内部依赖一律用相对 include 自包含，不在构建系统中声明额外 include 路径。
+
+Cinatra 原生使用 `#include "asio/..."`、`#include "async_simple/..."`、
+`#include "cinatra/..."`（以及尖括号形式）等前缀 include，必须把 include 根
+指向 `pkgs/cinatra/`，违反该约定。因此做了本地化改写：
+
+- 所有 `asio/`、`async_simple/`、`cinatra/` 前缀 include（`<...>` 与 `"..."`
+  形式，含 asio/async_simple/ylt 内部文件）统一改写为以 `pkgs/cinatra/` 为
+  根的相对路径（按文件所在目录深度加 `../`）。
+- `use_asio.hpp` / `smtp_client.hpp` 的 `#include <asio.hpp>` 改为
+  `#include "../asio.hpp"`。
+- 不改写 `ylt/` 前缀（ylt 位于 `cinatra/ylt/`，相对自身目录可直接解析）、
+  条件编译的系统库（brotli/zlib）与标准库头。
+
+升级 Cinatra 时：重新拷入新版后执行 `python3 pkgs/cinatra_fix_relative_includes.py`
+（脚本幂等，可重复运行）。此改动不影响外部使用者以 `-I pkgs/cinatra` 方式
+使用 cinatra 本身。
+
 ## LTool-local modifications
 
 Backward-compatible additions made on top of the upstream header so that

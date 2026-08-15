@@ -15,10 +15,10 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/functional.hpp"
+#include "../asio/detail/config.hpp"
+#include "../asio/detail/functional.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace placeholders {
@@ -76,6 +76,6 @@ static ASIO_INLINE_VARIABLE constexpr auto& signal_number
 } // namespace placeholders
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
 #endif // ASIO_PLACEHOLDERS_HPP

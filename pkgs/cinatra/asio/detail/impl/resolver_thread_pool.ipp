@@ -15,13 +15,13 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/config.hpp"
-#include "asio/detail/memory.hpp"
-#include "asio/detail/resolver_thread_pool.hpp"
-#include "asio/error.hpp"
+#include "../../../asio/detail/config.hpp"
+#include "../../../asio/config.hpp"
+#include "../../../asio/detail/memory.hpp"
+#include "../../../asio/detail/resolver_thread_pool.hpp"
+#include "../../../asio/error.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -119,6 +119,6 @@ void resolver_thread_pool::start_work_threads()
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_DETAIL_IMPL_RESOLVER_THREAD_POOL_IPP

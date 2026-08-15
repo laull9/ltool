@@ -17,11 +17,11 @@
 #define ASYNC_SIMPLE_FUTURE_H
 
 #include <type_traits>
-#include "async_simple/Executor.h"
-#include "async_simple/FutureState.h"
-#include "async_simple/LocalState.h"
-#include "async_simple/Promise.h"
-#include "async_simple/Traits.h"
+#include "../async_simple/Executor.h"
+#include "../async_simple/FutureState.h"
+#include "../async_simple/LocalState.h"
+#include "../async_simple/Promise.h"
+#include "../async_simple/Traits.h"
 
 namespace async_simple {
 

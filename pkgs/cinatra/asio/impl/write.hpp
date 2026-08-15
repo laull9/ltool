@@ -15,21 +15,21 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/associator.hpp"
-#include "asio/buffer.hpp"
-#include "asio/detail/array_fwd.hpp"
-#include "asio/detail/base_from_cancellation_state.hpp"
-#include "asio/detail/base_from_completion_cond.hpp"
-#include "asio/detail/bind_handler.hpp"
-#include "asio/detail/consuming_buffers.hpp"
-#include "asio/detail/dependent_type.hpp"
-#include "asio/detail/handler_cont_helpers.hpp"
-#include "asio/detail/handler_tracking.hpp"
-#include "asio/detail/handler_type_requirements.hpp"
-#include "asio/detail/non_const_lvalue.hpp"
-#include "asio/detail/throw_error.hpp"
+#include "../../asio/associator.hpp"
+#include "../../asio/buffer.hpp"
+#include "../../asio/detail/array_fwd.hpp"
+#include "../../asio/detail/base_from_cancellation_state.hpp"
+#include "../../asio/detail/base_from_completion_cond.hpp"
+#include "../../asio/detail/bind_handler.hpp"
+#include "../../asio/detail/consuming_buffers.hpp"
+#include "../../asio/detail/dependent_type.hpp"
+#include "../../asio/detail/handler_cont_helpers.hpp"
+#include "../../asio/detail/handler_tracking.hpp"
+#include "../../asio/detail/handler_type_requirements.hpp"
+#include "../../asio/detail/non_const_lvalue.hpp"
+#include "../../asio/detail/throw_error.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -775,6 +775,6 @@ struct associator<Associator,
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_IMPL_WRITE_HPP

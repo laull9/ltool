@@ -15,12 +15,12 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../../asio/detail/config.hpp"
 #include <stdexcept>
-#include "asio/thread_pool.hpp"
-#include "asio/detail/throw_exception.hpp"
+#include "../../asio/thread_pool.hpp"
+#include "../../asio/detail/throw_exception.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -140,6 +140,6 @@ void thread_pool::wait()
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_IMPL_THREAD_POOL_IPP

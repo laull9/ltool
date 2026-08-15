@@ -1,6 +1,6 @@
 #pragma once
 
-#include <async_simple/coro/Lazy.h>
+#include "../async_simple/coro/Lazy.h"
 
 #include <functional>
 #include <string>
@@ -8,7 +8,7 @@
 #include <tuple>
 #include <vector>
 
-#include "cinatra/coro_http_request.hpp"
+#include "../cinatra/coro_http_request.hpp"
 #include "coro_http_response.hpp"
 #include "ylt/util/type_traits.h"
 

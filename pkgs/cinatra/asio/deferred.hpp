@@ -15,14 +15,14 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../asio/detail/config.hpp"
 #include <tuple>
-#include "asio/associator.hpp"
-#include "asio/async_result.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/detail/utility.hpp"
+#include "../asio/associator.hpp"
+#include "../asio/async_result.hpp"
+#include "../asio/detail/type_traits.hpp"
+#include "../asio/detail/utility.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -712,8 +712,8 @@ ASIO_INLINE_VARIABLE constexpr deferred_t deferred;
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
-#include "asio/impl/deferred.hpp"
+#include "../asio/impl/deferred.hpp"
 
 #endif // ASIO_DEFERRED_HPP

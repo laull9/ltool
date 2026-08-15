@@ -15,12 +15,12 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/memory.hpp"
-#include "asio/detail/recycling_allocator.hpp"
-#include "asio/associated_allocator.hpp"
+#include "../../asio/detail/config.hpp"
+#include "../../asio/detail/memory.hpp"
+#include "../../asio/detail/recycling_allocator.hpp"
+#include "../../asio/associated_allocator.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 #define ASIO_DEFINE_TAGGED_HANDLER_PTR(purpose, op) \
   struct ptr \
@@ -118,6 +118,6 @@
       ::asio::detail::thread_info_base::default_tag, op ) \
   /**/
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_DETAIL_HANDLER_ALLOC_HELPERS_HPP

@@ -15,7 +15,7 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../../../asio/detail/config.hpp"
 
 #include <cctype>
 #include <cstdio>
@@ -23,9 +23,9 @@
 #include <cstring>
 #include <cerrno>
 #include <new>
-#include "asio/detail/assert.hpp"
-#include "asio/detail/socket_ops.hpp"
-#include "asio/error.hpp"
+#include "../../../asio/detail/assert.hpp"
+#include "../../../asio/detail/socket_ops.hpp"
+#include "../../../asio/error.hpp"
 
 #if defined(ASIO_WINDOWS_RUNTIME)
 # include <codecvt>
@@ -45,7 +45,7 @@
 # include <malloc.h>
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1800)
 
-#include "asio/detail/push_options.hpp"
+#include "../../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -4039,6 +4039,6 @@ u_short_type host_to_network_short(u_short_type value)
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_DETAIL_SOCKET_OPS_IPP

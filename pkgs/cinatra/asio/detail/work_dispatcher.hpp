@@ -15,19 +15,19 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/bind_handler.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/associated_executor.hpp"
-#include "asio/associated_allocator.hpp"
-#include "asio/executor_work_guard.hpp"
-#include "asio/execution/executor.hpp"
-#include "asio/execution/allocator.hpp"
-#include "asio/execution/blocking.hpp"
-#include "asio/execution/outstanding_work.hpp"
-#include "asio/prefer.hpp"
+#include "../../asio/detail/config.hpp"
+#include "../../asio/detail/bind_handler.hpp"
+#include "../../asio/detail/type_traits.hpp"
+#include "../../asio/associated_executor.hpp"
+#include "../../asio/associated_allocator.hpp"
+#include "../../asio/executor_work_guard.hpp"
+#include "../../asio/execution/executor.hpp"
+#include "../../asio/execution/allocator.hpp"
+#include "../../asio/execution/blocking.hpp"
+#include "../../asio/execution/outstanding_work.hpp"
+#include "../../asio/prefer.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -138,6 +138,6 @@ private:
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_DETAIL_WORK_DISPATCHER_HPP

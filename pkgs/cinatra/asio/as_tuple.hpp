@@ -15,10 +15,10 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/type_traits.hpp"
+#include "../asio/detail/config.hpp"
+#include "../asio/detail/type_traits.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -145,8 +145,8 @@ ASIO_INLINE_VARIABLE constexpr partial_as_tuple as_tuple;
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
-#include "asio/impl/as_tuple.hpp"
+#include "../asio/impl/as_tuple.hpp"
 
 #endif // ASIO_AS_TUPLE_HPP

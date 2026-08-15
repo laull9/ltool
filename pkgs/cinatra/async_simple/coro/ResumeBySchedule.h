@@ -16,10 +16,10 @@
 #ifndef ASYNC_RESUME_BY_SCHEDULE_H
 #define ASYNC_RESUME_BY_SCHEDULE_H
 
-#include "async_simple/Executor.h"
-#include "async_simple/Future.h"
-#include "async_simple/coro/Lazy.h"
-#include "async_simple/experimental/coroutine.h"
+#include "../../async_simple/Executor.h"
+#include "../../async_simple/Future.h"
+#include "../../async_simple/coro/Lazy.h"
+#include "../../async_simple/experimental/coroutine.h"
 
 #include <type_traits>
 #include <utility>

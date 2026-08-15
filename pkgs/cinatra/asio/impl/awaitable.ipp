@@ -15,14 +15,14 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../../asio/detail/config.hpp"
 
 #if defined(ASIO_HAS_CO_AWAIT)
 
-#include "asio/awaitable.hpp"
-#include "asio/detail/call_stack.hpp"
+#include "../../asio/awaitable.hpp"
+#include "../../asio/detail/call_stack.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -41,7 +41,7 @@ bool awaitable_launch_context::is_launching()
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // defined(ASIO_HAS_CO_AWAIT)
 

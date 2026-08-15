@@ -15,14 +15,14 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/basic_waitable_timer.hpp"
-#include "asio/cancellation_type.hpp"
-#include "asio/detail/chrono.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/wait_traits.hpp"
+#include "../asio/detail/config.hpp"
+#include "../asio/basic_waitable_timer.hpp"
+#include "../asio/cancellation_type.hpp"
+#include "../asio/detail/chrono.hpp"
+#include "../asio/detail/type_traits.hpp"
+#include "../asio/wait_traits.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -287,8 +287,8 @@ cancel_at(basic_waitable_timer<Clock, WaitTraits, Executor>& timer,
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
-#include "asio/impl/cancel_at.hpp"
+#include "../asio/impl/cancel_at.hpp"
 
 #endif // ASIO_CANCEL_AT_HPP

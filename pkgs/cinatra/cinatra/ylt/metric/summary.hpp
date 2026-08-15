@@ -11,7 +11,7 @@
 #if __has_include("ylt/util/concurrentqueue.h")
 #include "ylt/util/concurrentqueue.h"
 #else
-#include "cinatra/ylt/util/concurrentqueue.h"
+#include "../../../cinatra/ylt/util/concurrentqueue.h"
 #endif
 
 namespace ylt::metric {

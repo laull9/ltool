@@ -15,20 +15,20 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/execution_context.hpp"
-#include "asio/detail/mutex.hpp"
-#include "asio/detail/resolve_op.hpp"
-#include "asio/detail/scheduler.hpp"
-#include "asio/detail/thread_group.hpp"
+#include "../../asio/detail/config.hpp"
+#include "../../asio/execution_context.hpp"
+#include "../../asio/detail/mutex.hpp"
+#include "../../asio/detail/resolve_op.hpp"
+#include "../../asio/detail/scheduler.hpp"
+#include "../../asio/detail/thread_group.hpp"
 
 #if defined(ASIO_HAS_IOCP)
-# include "asio/detail/win_iocp_io_context.hpp"
+# include "../../asio/detail/win_iocp_io_context.hpp"
 #else // defined(ASIO_HAS_IOCP)
-# include "asio/detail/scheduler.hpp"
+# include "../../asio/detail/scheduler.hpp"
 #endif // defined(ASIO_HAS_IOCP)
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -96,10 +96,10 @@ private:
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #if defined(ASIO_HEADER_ONLY)
-# include "asio/detail/impl/resolver_thread_pool.ipp"
+# include "../../asio/detail/impl/resolver_thread_pool.ipp"
 #endif // defined(ASIO_HEADER_ONLY)
 
 #endif // ASIO_DETAIL_RESOLVER_THREAD_POOL_HPP

@@ -17,10 +17,10 @@
 #ifndef ASYNC_SIMPLE_CORO_DISPATCH_H
 #define ASYNC_SIMPLE_CORO_DISPATCH_H
 
-#include "async_simple/Common.h"
-#include "async_simple/Executor.h"
-#include "async_simple/coro/Lazy.h"
-#include "async_simple/experimental/coroutine.h"
+#include "../../async_simple/Common.h"
+#include "../../async_simple/Executor.h"
+#include "../../async_simple/coro/Lazy.h"
+#include "../../async_simple/experimental/coroutine.h"
 
 #include <cassert>
 #include <type_traits>

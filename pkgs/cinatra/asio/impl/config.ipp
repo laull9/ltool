@@ -15,8 +15,8 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/config.hpp"
-#include "asio/detail/concurrency_hint.hpp"
+#include "../../asio/config.hpp"
+#include "../../asio/detail/concurrency_hint.hpp"
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -24,7 +24,7 @@
 #include <vector>
 #include <utility>
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -340,6 +340,6 @@ void config_from_env::make(execution_context& ctx) const
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_IMPL_CONFIG_IPP

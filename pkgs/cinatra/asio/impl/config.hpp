@@ -15,13 +15,13 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../../asio/detail/config.hpp"
 #include <cerrno>
 #include <cstdlib>
 #include <limits>
 #include <stdexcept>
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -97,6 +97,6 @@ config::get(const char* section, const char* key_name, T default_value) const
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_IMPL_CONFIG_HPP

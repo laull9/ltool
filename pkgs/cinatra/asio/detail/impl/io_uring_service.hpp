@@ -17,9 +17,9 @@
 
 #if defined(ASIO_HAS_IO_URING)
 
-#include "asio/detail/scheduler.hpp"
+#include "../../../asio/detail/scheduler.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -111,7 +111,7 @@ void io_uring_service::move_timer(timer_queue<TimeTraits, Allocator>& queue,
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../../asio/detail/pop_options.hpp"
 
 #endif // defined(ASIO_HAS_IO_URING)
 

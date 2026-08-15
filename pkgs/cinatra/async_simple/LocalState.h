@@ -25,9 +25,9 @@
 #include <stdexcept>
 #include <thread>
 #include <utility>
-#include "async_simple/Common.h"
-#include "async_simple/Executor.h"
-#include "async_simple/Try.h"
+#include "../async_simple/Common.h"
+#include "../async_simple/Executor.h"
+#include "../async_simple/Try.h"
 
 namespace async_simple {
 

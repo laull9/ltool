@@ -15,19 +15,19 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../asio/detail/config.hpp"
 #include <cstddef>
-#include "asio/buffered_write_stream_fwd.hpp"
-#include "asio/buffer.hpp"
-#include "asio/completion_condition.hpp"
-#include "asio/detail/bind_handler.hpp"
-#include "asio/detail/buffered_stream_storage.hpp"
-#include "asio/detail/noncopyable.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/error.hpp"
-#include "asio/write.hpp"
+#include "../asio/buffered_write_stream_fwd.hpp"
+#include "../asio/buffer.hpp"
+#include "../asio/completion_condition.hpp"
+#include "../asio/detail/bind_handler.hpp"
+#include "../asio/detail/buffered_stream_storage.hpp"
+#include "../asio/detail/noncopyable.hpp"
+#include "../asio/detail/type_traits.hpp"
+#include "../asio/error.hpp"
+#include "../asio/write.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -258,8 +258,8 @@ private:
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
-#include "asio/impl/buffered_write_stream.hpp"
+#include "../asio/impl/buffered_write_stream.hpp"
 
 #endif // ASIO_BUFFERED_WRITE_STREAM_HPP

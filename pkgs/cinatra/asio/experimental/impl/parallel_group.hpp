@@ -15,18 +15,18 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../../../asio/detail/config.hpp"
 #include <atomic>
 #include <deque>
 #include <memory>
 #include <new>
 #include <tuple>
-#include "asio/associated_cancellation_slot.hpp"
-#include "asio/detail/recycling_allocator.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/dispatch.hpp"
+#include "../../../asio/associated_cancellation_slot.hpp"
+#include "../../../asio/detail/recycling_allocator.hpp"
+#include "../../../asio/detail/type_traits.hpp"
+#include "../../../asio/dispatch.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace experimental {
@@ -784,6 +784,6 @@ struct associator<Associator,
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_IMPL_EXPERIMENTAL_PARALLEL_GROUP_HPP

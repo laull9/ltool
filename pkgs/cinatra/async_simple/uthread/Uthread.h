@@ -17,7 +17,7 @@
 #define ASYNC_SIMPLE_UTHREAD_UTHREAD_H
 
 #include <memory>
-#include "async_simple/uthread/internal/thread.h"
+#include "../../async_simple/uthread/internal/thread.h"
 
 namespace async_simple {
 namespace uthread {

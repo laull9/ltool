@@ -10,52 +10,61 @@
  * 设计红线：
  * - Request/Response/Task 直接 alias，不重新造对象；
  * - 所有高级功能允许通过 Native() 回到 Cinatra；
- * - Controller 不继承基类（duck typing）；
- * - 不做运行时 DI（构造时直接注入）；
+ * - Controller/Module 不继承基类（duck typing），不强制静态 Prefix；
+ * - 不做运行时 DI（依赖经构造函数/参数显式传入，生命周期由用户管理）；
  * - Router 只做路径、Method、Handler 绑定；
  * - Middleware 复用 Cinatra Aspect；
- * - JSON 使用 LJson（codec 可替换）。
+ * - JSON 使用 LJson（codec 可替换）；
+ * - 不规定业务架构：Minimal API / Controller / Module / Vertical Slice 可混用。
  *
- * 常用示例：
+ * 常用示例（四种架构可任意混用）：
  * @code
  * #include "LWeb.hpp"
  *
+ * // Controller：自行用 Group 组织路径，不强制静态 Prefix。
  * class UserController {
  * public:
- *     static constexpr std::string_view Prefix = "/api/users";
- *
  *     explicit UserController(UserService& svc) : svc_(svc) {}
  *
  *     void Register(LWeb::Router& r) {
- *         r.Get("",      this, &UserController::GetAll);
- *         r.Get("/:id",  this, &UserController::GetById);
- *         r.Post("",     this, &UserController::Create);
+ *         auto users = r.Group("/api/users");
+ *         users.Get("",     this, &UserController::GetAll);
+ *         users.Get("/:id", this, &UserController::GetById);
  *     }
  *
  * private:
  *     UserService& svc_;
- *
  *     void GetAll(LWeb::Request&, LWeb::Response& res) {
  *         LWeb::Json(res, svc_.GetAll());
  *     }
- *
  *     LWeb::Task<> GetById(LWeb::Request& req, LWeb::Response& res) {
  *         auto user = co_await svc_.GetById(LWeb::Param(req, "id"));
  *         LWeb::Json(res, user);
  *     }
+ * };
  *
- *     void Create(LWeb::Request& req, LWeb::Response& res) {
- *         LWeb::Created(res, LWeb::BodyJson<User>(req));
+ * // Vertical Slice：静态 Map(Router&, 依赖...)，不创建长期对象。
+ * struct CreateUser {
+ *     struct Input { std::string name; int age; };
+ *     static void Map(LWeb::Router& r, UserRepository& users) {
+ *         r.Post("/api/users", [&users](LWeb::Request& req, LWeb::Response& res) {
+ *             auto input = LWeb::BodyJson<Input>(req);
+ *             LWeb::Created(res, users.Create(input));
+ *         });
  *     }
  * };
  *
  * int main() {
  *     UserService svc;
+ *     UserRepository repo;
  *     LWeb::Application app{LWeb::ApplicationOptions{.port = 8080}};
- *     app.Get("/health", [](auto&, LWeb::Response& res) {
+ *
+ *     app.Get("/health", [](auto&, LWeb::Response& res) {  // Minimal API
  *         LWeb::Ok(res, "ok");
  *     });
- *     app.AddController<UserController>(svc);
+ *     app.AddController<UserController>(svc);              // Controller
+ *     app.AddModule<AdminModule>(admin_service);           // 通用 Module
+ *     app.Map<CreateUser>(repo);                           // Vertical Slice
  *     return app.Run() ? 1 : 0;
  * }
  * @endcode
@@ -116,6 +125,59 @@ using HeaderMap = std::unordered_map<std::string, std::string>;
 template <typename T = void>
 using Task = async_simple::coro::Lazy<T>;
 
+// ---- 返回值式 Handler 的结果类型 ----
+
+/// Handler 可直接返回的结果类型集合。
+///
+/// 返回值式 Handler（可选）：handler 返回结果类型而非操作 Response，
+/// 由框架自动映射状态码与响应体：
+/// @code
+/// LWeb::Result::Created<User> Create(LWeb::Request& req) {
+///     return {LWeb::BodyJson<User>(req)};
+/// }
+///
+/// LWeb::Result::Variant<User> GetById(LWeb::Request& req) {
+///     auto id = LWeb::Param(req, "id");
+///     if (id.empty()) {
+///         return LWeb::Result::BadRequest{"missing id"};
+///     }
+///     return User{...};                       // 裸类型 -> 200 JSON
+/// }
+/// @endcode
+///
+/// 自动映射：普通类型 -> 200 JSON；Result::Created<T> -> 201 JSON；
+/// Result::NotFound -> 404；Result::BadRequest -> 400；Result::NoContent -> 204；
+/// 字符串 -> 200 文本；Result::Variant<T> 按实际持有类型分发。
+/// 协程 Handler 返回 Task<T> / Task<Result::...> 同样适用。
+namespace Result {
+
+/// 204 No Content。
+struct NoContent {};
+
+/// 404 Not Found（message 可为空）。
+struct NotFound {
+    std::string message;
+};
+
+/// 201 Created，携带 JSON 负载。
+template <typename T>
+struct Created {
+    T value;
+};
+
+/// 400 Bad Request（message 可为空）。
+struct BadRequest {
+    std::string message;
+};
+
+/// 多选一结果：handler 可返回其中任意一种（普通 T / Created<T> /
+/// NotFound / NoContent / BadRequest）。
+template <typename T>
+using Variant =
+    std::variant<T, Created<T>, NotFound, NoContent, BadRequest>;
+
+} // namespace Result
+
 // ---- JSON Codec：默认使用 LJson，可整体替换 ----
 
 /// 默认 JSON 编解码器：序列化用 LJson 反射，反序列化失败抛异常。
@@ -152,6 +214,18 @@ inline constexpr bool is_lazy_v = false;
 template <typename T>
 inline constexpr bool is_lazy_v<async_simple::coro::Lazy<T>> = true;
 
+/// 提取 Lazy<T> 的载荷类型 T。
+template <typename T>
+struct lazy_value;
+
+template <typename T>
+struct lazy_value<async_simple::coro::Lazy<T>> {
+    using type = T;
+};
+
+template <typename T>
+using lazy_value_t = typename lazy_value<std::remove_cvref_t<T>>::type;
+
 /// Handler 必须是可用 (Request&, Response&) 调用的可调用对象。
 template <typename F>
 concept HttpHandler = std::invocable<F, Request&, Response&>;
@@ -162,21 +236,80 @@ using handler_result_t =
     decltype(std::declval<Handler&>()(std::declval<Request&>(),
                                       std::declval<Response&>()));
 
+/// 文本类型判定：返回值式 Handler 中按 200 文本输出，而非 JSON。
+template <typename T>
+inline constexpr bool is_text_v =
+    std::same_as<T, std::string> || std::same_as<T, std::string_view> ||
+    std::same_as<T, const char*> || std::is_array_v<T>;
+
+// 前置声明：WriteResult 定义在 Response helpers 之后（见下方），
+// 供 WrapSync/WrapCoro 在包装层调用。
+inline void WriteResult(Response& res, Result::NoContent);
+inline void WriteResult(Response& res, Result::NotFound not_found);
+template <typename T>
+void WriteResult(Response& res, Result::Created<T> created);
+inline void WriteResult(Response& res, Result::BadRequest bad_request);
+template <typename... Ts>
+void WriteResult(Response& res, std::variant<Ts...> variant);
+template <typename T>
+void WriteResult(Response& res, T&& value);
+
 /// 把 Handler 包装为类型化同步 lambda（消除泛型 lambda 对 function_traits 的依赖）。
+/// 同时兜底异常：cinatra 对带 :id 等动态路径的同步 handler 不做 try/catch，
+/// 这里统一捕获并转 500，避免异常穿透导致进程终止。
+/// Handler 可返回 void（直接操作 res），也可返回结果类型（Result::* / 普通类型）
+/// 由框架自动映射状态码。
 template <typename Handler>
 auto WrapSync(Handler&& handler) {
     return [h = std::forward<Handler>(handler)](Request& req,
-                                                Response& res) mutable
-               -> decltype(auto) { return h(req, res); };
+                                                Response& res) mutable {
+        try {
+            using ResultT = decltype(h(req, res));
+            if constexpr (std::same_as<ResultT, void>) {
+                h(req, res);
+            }
+            else {
+                auto result = h(req, res);
+                detail::WriteResult(res, std::move(result));
+            }
+        }
+        catch (const std::exception& e) {
+            res.set_status_and_content(HttpStatus::internal_server_error,
+                                       e.what());
+        }
+        catch (...) {
+            res.set_status_and_content(HttpStatus::internal_server_error,
+                                       "unknown exception");
+        }
+    };
 }
 
 /// 把返回 Lazy<T> 的 Handler 包装为 Lazy<void> 协程 lambda。
+/// 与 WrapSync 相同：统一兜底协程 handler 中抛出的异常，
+/// 并支持协程返回值（Task<T> / Task<Result>）自动映射。
 template <typename Handler>
 auto WrapCoro(Handler&& handler) {
     return [h = std::forward<Handler>(handler)](Request& req,
                                                 Response& res) mutable
                -> Task<> {
-        co_await h(req, res);
+        try {
+            using ResultT = lazy_value_t<decltype(h(req, res))>;
+            if constexpr (std::same_as<ResultT, void>) {
+                co_await h(req, res);
+            }
+            else {
+                auto result = co_await h(req, res);
+                detail::WriteResult(res, std::move(result));
+            }
+        }
+        catch (const std::exception& e) {
+            res.set_status_and_content(HttpStatus::internal_server_error,
+                                       e.what());
+        }
+        catch (...) {
+            res.set_status_and_content(HttpStatus::internal_server_error,
+                                       "unknown exception");
+        }
     };
 }
 
@@ -441,21 +574,38 @@ public:
         router_.Init(server_);
     }
 
-    /// 注册 Controller（duck typing：需有静态 Prefix 与 Register(Router&)）。
+    /// 注册 Controller：只需成员 void Register(Router&)，依赖经构造函数
+    /// 显式传入（可为空）。路径由 Controller 自己在 Register 里用 Group 组织，
+    /// 框架不强制静态 Prefix。
     template <typename Controller, typename... Args>
     Controller& AddController(Args&&... args) {
-        static_assert(requires { Controller::Prefix; },
-                      "LWeb: Controller 需要静态成员 Prefix（如 "
-                      "static constexpr std::string_view Prefix = \"/api\";）");
         static_assert(requires(Controller& c, Router& r) { c.Register(r); },
-                      "LWeb: Controller 需要成员 void Register(LWeb::Router&)");
+                      "LWeb: Controller 需要成员 "
+                      "void Register(LWeb::Router&)（路径在 Register 内 "
+                      "通过 r.Group(...) 组织）");
+        return RegisterObject<Controller>(std::forward<Args>(args)...);
+    }
 
-        auto controller =
-            std::make_shared<Controller>(std::forward<Args>(args)...);
-        Router group = router_.Group(Controller::Prefix);
-        controller->Register(group);
-        controllers_.push_back(std::move(controller));
-        return *static_cast<Controller*>(controllers_.back().get());
+    /// 注册通用模块：只需成员 void Register(Router&)，依赖经构造函数显式传入。
+    /// Module 与 Controller 行为一致，仅语义区分（Controller 可视为 Module 的
+    /// 一种业务化命名）。
+    template <typename Module, typename... Args>
+    Module& AddModule(Args&&... args) {
+        static_assert(requires(Module& m, Router& r) { m.Register(r); },
+                      "LWeb: Module 需要成员 void Register(LWeb::Router&)");
+        return RegisterObject<Module>(std::forward<Args>(args)...);
+    }
+
+    /// Vertical Slice：调用特征类型的静态方法 T::Map(Router&, 依赖...)，
+    /// 不创建长期 Feature 对象。依赖生命周期由用户管理。
+    template <typename Feature, typename... Args>
+    void Map(Args&&... args) {
+        static_assert(
+            requires { Feature::Map(std::declval<Router&>(),
+                                    std::declval<Args&>()...); },
+            "LWeb: Feature 需要静态方法 "
+            "static void Map(LWeb::Router&, 依赖...)");
+        Feature::Map(router_, args...);
     }
 
     /// 注册 GET 路由。
@@ -577,6 +727,15 @@ public:
     cinatra::coro_http_server& Native() { return server_; }
 
 private:
+    /// 创建可注册对象并调用其 Register(Router&)，由 Application 持有生命周期。
+    template <typename T, typename... Args>
+    T& RegisterObject(Args&&... args) {
+        auto object = std::make_shared<T>(std::forward<Args>(args)...);
+        object->Register(router_);
+        controllers_.push_back(std::move(object));
+        return *static_cast<T*>(controllers_.back().get());
+    }
+
     // 析构顺序：server_ 先析构（join 线程池），Controller 最后析构，
     // 保证 in-flight handler 中捕获的 this 不会悬垂。
     std::vector<std::shared_ptr<void>> controllers_;
@@ -731,6 +890,65 @@ template <typename T, typename Codec = LWebJsonCodec>
 T BodyJson(Request& req) {
     return Codec::template Deserialize<T>(req.get_body());
 }
+
+// ---- 返回值式 Handler 的结果类型映射（定义见上方 Result 命名空间） ----
+
+namespace detail {
+
+/// 把 Handler 的返回值写入响应：结果类型映射状态码，普通类型走 JSON。
+inline void WriteResult(Response& res, Result::NoContent) {
+    NoContent(res);
+}
+
+/// 404：有消息则输出文本，无消息则只设置状态码。
+inline void WriteResult(Response& res, Result::NotFound not_found) {
+    if (not_found.message.empty()) {
+        res.set_status_and_content(HttpStatus::not_found, std::string());
+    }
+    else {
+        LWeb::NotFound(res, not_found.message);
+    }
+}
+
+/// 201 Created：负载走 JSON。
+template <typename T>
+void WriteResult(Response& res, Result::Created<T> created) {
+    Json(res, created.value, HttpStatus::created);
+}
+
+/// 400：有消息则输出文本，无消息则只设置状态码。
+inline void WriteResult(Response& res, Result::BadRequest bad_request) {
+    if (bad_request.message.empty()) {
+        res.set_status_and_content(HttpStatus::bad_request, std::string());
+    }
+    else {
+        LWeb::BadRequest(res, bad_request.message);
+    }
+}
+
+/// std::variant（如 Result::Variant<T>）按实际持有类型转发。
+template <typename... Ts>
+void WriteResult(Response& res, std::variant<Ts...> variant) {
+    std::visit(
+        [&res](auto&& value) {
+            WriteResult(res, std::forward<decltype(value)>(value));
+        },
+        std::move(variant));
+}
+
+/// 其他类型：文本按 200 文本，其余按 200 JSON 输出。
+template <typename T>
+void WriteResult(Response& res, T&& value) {
+    using U = std::remove_cvref_t<T>;
+    if constexpr (is_text_v<U>) {
+        Ok(res, std::string_view(value));
+    }
+    else {
+        Json(res, std::forward<T>(value));
+    }
+}
+
+} // namespace detail
 
 // ---- HttpClient：cinatra::coro_http_client 的便捷封装 ----
 

@@ -15,30 +15,30 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../../asio/detail/config.hpp"
 #include <cstddef>
-#include "asio/associated_cancellation_slot.hpp"
-#include "asio/cancellation_type.hpp"
-#include "asio/config.hpp"
-#include "asio/error.hpp"
-#include "asio/execution_context.hpp"
-#include "asio/detail/bind_handler.hpp"
-#include "asio/detail/fenced_block.hpp"
-#include "asio/detail/memory.hpp"
-#include "asio/detail/noncopyable.hpp"
-#include "asio/detail/socket_ops.hpp"
-#include "asio/detail/socket_types.hpp"
-#include "asio/detail/timer_queue.hpp"
-#include "asio/detail/timer_scheduler.hpp"
-#include "asio/detail/wait_handler.hpp"
-#include "asio/detail/wait_op.hpp"
+#include "../../asio/associated_cancellation_slot.hpp"
+#include "../../asio/cancellation_type.hpp"
+#include "../../asio/config.hpp"
+#include "../../asio/error.hpp"
+#include "../../asio/execution_context.hpp"
+#include "../../asio/detail/bind_handler.hpp"
+#include "../../asio/detail/fenced_block.hpp"
+#include "../../asio/detail/memory.hpp"
+#include "../../asio/detail/noncopyable.hpp"
+#include "../../asio/detail/socket_ops.hpp"
+#include "../../asio/detail/socket_types.hpp"
+#include "../../asio/detail/timer_queue.hpp"
+#include "../../asio/detail/timer_scheduler.hpp"
+#include "../../asio/detail/wait_handler.hpp"
+#include "../../asio/detail/wait_op.hpp"
 
 #if defined(ASIO_WINDOWS_RUNTIME)
 # include <chrono>
 # include <thread>
 #endif // defined(ASIO_WINDOWS_RUNTIME)
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -340,6 +340,6 @@ private:
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_DETAIL_DEADLINE_TIMER_SERVICE_HPP

@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 #pragma once
-#include <async_simple/Promise.h>
-#include <async_simple/Traits.h>
-#include <async_simple/coro/FutureAwaiter.h>
+#include "../../../async_simple/Promise.h"
+#include "../../../async_simple/Traits.h"
+#include "../../../async_simple/coro/FutureAwaiter.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -24,16 +24,16 @@
 #include <fstream>
 #include <span>
 
-#include "async_simple/coro/SyncAwait.h"
+#include "../../../async_simple/coro/SyncAwait.h"
 #include "io_context_pool.hpp"
 #if defined(ENABLE_FILE_IO_URING) || defined(ASIO_WINDOWS)
-#include <asio/random_access_file.hpp>
-#include <asio/stream_file.hpp>
+#include "../../../asio/random_access_file.hpp"
+#include "../../../asio/stream_file.hpp"
 #endif
-#include <async_simple/coro/Lazy.h>
+#include "../../../async_simple/coro/Lazy.h"
 #include <fcntl.h>
 
-#include <asio/error.hpp>
+#include "../../../asio/error.hpp"
 #include <cstddef>
 #include <exception>
 #include <iostream>

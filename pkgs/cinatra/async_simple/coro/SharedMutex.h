@@ -16,10 +16,10 @@
 #include <cassert>
 #include <climits>
 
-#include "async_simple/coro/ConditionVariable.h"
-#include "async_simple/coro/Lazy.h"
-#include "async_simple/coro/Mutex.h"
-#include "async_simple/coro/SpinLock.h"
+#include "../../async_simple/coro/ConditionVariable.h"
+#include "../../async_simple/coro/Lazy.h"
+#include "../../async_simple/coro/Mutex.h"
+#include "../../async_simple/coro/SpinLock.h"
 namespace async_simple::coro {
 
 template <typename Lock>

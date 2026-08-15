@@ -15,20 +15,20 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../asio/detail/config.hpp"
 #include <cstddef>
 #include <utility>
-#include "asio/any_io_executor.hpp"
-#include "asio/detail/chrono_time_traits.hpp"
-#include "asio/detail/deadline_timer_service.hpp"
-#include "asio/detail/handler_type_requirements.hpp"
-#include "asio/detail/io_object_impl.hpp"
-#include "asio/detail/non_const_lvalue.hpp"
-#include "asio/detail/throw_error.hpp"
-#include "asio/error.hpp"
-#include "asio/wait_traits.hpp"
+#include "../asio/any_io_executor.hpp"
+#include "../asio/detail/chrono_time_traits.hpp"
+#include "../asio/detail/deadline_timer_service.hpp"
+#include "../asio/detail/handler_type_requirements.hpp"
+#include "../asio/detail/io_object_impl.hpp"
+#include "../asio/detail/non_const_lvalue.hpp"
+#include "../asio/detail/throw_error.hpp"
+#include "../asio/error.hpp"
+#include "../asio/wait_traits.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -640,6 +640,6 @@ private:
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
 #endif // ASIO_BASIC_WAITABLE_TIMER_HPP

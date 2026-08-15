@@ -15,10 +15,10 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/error_code.hpp"
-#include "asio/detail/completion_message.hpp"
+#include "../../asio/detail/config.hpp"
+#include "../../asio/detail/type_traits.hpp"
+#include "../../asio/error_code.hpp"
+#include "../../asio/detail/completion_message.hpp"
 
 #if defined(ASIO_HAS_STD_VARIANT)
 # include <variant>
@@ -26,7 +26,7 @@
 # include <new>
 #endif // defined(ASIO_HAS_STD_VARIANT)
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -215,6 +215,6 @@ private:
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_DETAIL_COMPLETION_PAYLOAD_HPP

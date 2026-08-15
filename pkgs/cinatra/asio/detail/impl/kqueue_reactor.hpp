@@ -16,13 +16,13 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../../../asio/detail/config.hpp"
 
 #if defined(ASIO_HAS_KQUEUE)
 
-#include "asio/detail/scheduler.hpp"
+#include "../../../asio/detail/scheduler.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -110,7 +110,7 @@ void kqueue_reactor::move_timer(timer_queue<TimeTraits, Allocator>& queue,
 } // namespace detail
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../../asio/detail/pop_options.hpp"
 
 #endif // defined(ASIO_HAS_KQUEUE)
 

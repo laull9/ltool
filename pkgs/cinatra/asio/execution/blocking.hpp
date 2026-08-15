@@ -15,21 +15,21 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/execution/executor.hpp"
-#include "asio/is_applicable_property.hpp"
-#include "asio/prefer.hpp"
-#include "asio/query.hpp"
-#include "asio/require.hpp"
-#include "asio/traits/execute_member.hpp"
-#include "asio/traits/query_free.hpp"
-#include "asio/traits/query_member.hpp"
-#include "asio/traits/query_static_constexpr_member.hpp"
-#include "asio/traits/static_query.hpp"
-#include "asio/traits/static_require.hpp"
+#include "../../asio/detail/config.hpp"
+#include "../../asio/detail/type_traits.hpp"
+#include "../../asio/execution/executor.hpp"
+#include "../../asio/is_applicable_property.hpp"
+#include "../../asio/prefer.hpp"
+#include "../../asio/query.hpp"
+#include "../../asio/require.hpp"
+#include "../../asio/traits/execute_member.hpp"
+#include "../../asio/traits/query_free.hpp"
+#include "../../asio/traits/query_member.hpp"
+#include "../../asio/traits/query_static_constexpr_member.hpp"
+#include "../../asio/traits/static_query.hpp"
+#include "../../asio/traits/static_require.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -1355,6 +1355,6 @@ struct prefer_member<
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_EXECUTION_BLOCKING_HPP

@@ -15,18 +15,18 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/associated_cancellation_slot.hpp"
-#include "asio/associator.hpp"
-#include "asio/basic_waitable_timer.hpp"
-#include "asio/cancellation_signal.hpp"
-#include "asio/detail/atomic_count.hpp"
-#include "asio/detail/completion_payload.hpp"
-#include "asio/detail/completion_payload_handler.hpp"
-#include "asio/detail/handler_alloc_helpers.hpp"
-#include "asio/detail/type_traits.hpp"
+#include "../../asio/detail/config.hpp"
+#include "../../asio/associated_cancellation_slot.hpp"
+#include "../../asio/associator.hpp"
+#include "../../asio/basic_waitable_timer.hpp"
+#include "../../asio/cancellation_signal.hpp"
+#include "../../asio/detail/atomic_count.hpp"
+#include "../../asio/detail/completion_payload.hpp"
+#include "../../asio/detail/completion_payload_handler.hpp"
+#include "../../asio/detail/handler_alloc_helpers.hpp"
+#include "../../asio/detail/type_traits.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -356,6 +356,6 @@ struct associator<Associator,
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_DETAIL_TIMED_CANCEL_OP_HPP

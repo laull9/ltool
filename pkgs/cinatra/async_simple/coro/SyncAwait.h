@@ -17,11 +17,11 @@
 #define ASYNC_SIMPLE_CORO_SYNC_AWAIT_H
 
 #include <exception>
-#include "async_simple/Common.h"
-#include "async_simple/Executor.h"
-#include "async_simple/Try.h"
-#include "async_simple/experimental/coroutine.h"
-#include "async_simple/util/Condition.h"
+#include "../../async_simple/Common.h"
+#include "../../async_simple/Executor.h"
+#include "../../async_simple/Try.h"
+#include "../../async_simple/experimental/coroutine.h"
+#include "../../async_simple/util/Condition.h"
 
 namespace async_simple {
 namespace coro {

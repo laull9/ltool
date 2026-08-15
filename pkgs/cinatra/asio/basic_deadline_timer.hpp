@@ -15,7 +15,7 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../asio/detail/config.hpp"
 
 #if !defined(ASIO_NO_DEPRECATED)
 
@@ -23,17 +23,17 @@
   || defined(GENERATING_DOCUMENTATION)
 
 #include <cstddef>
-#include "asio/any_io_executor.hpp"
-#include "asio/detail/deadline_timer_service.hpp"
-#include "asio/detail/handler_type_requirements.hpp"
-#include "asio/detail/io_object_impl.hpp"
-#include "asio/detail/non_const_lvalue.hpp"
-#include "asio/detail/throw_error.hpp"
-#include "asio/error.hpp"
-#include "asio/execution_context.hpp"
-#include "asio/time_traits.hpp"
+#include "../asio/any_io_executor.hpp"
+#include "../asio/detail/deadline_timer_service.hpp"
+#include "../asio/detail/handler_type_requirements.hpp"
+#include "../asio/detail/io_object_impl.hpp"
+#include "../asio/detail/non_const_lvalue.hpp"
+#include "../asio/detail/throw_error.hpp"
+#include "../asio/error.hpp"
+#include "../asio/execution_context.hpp"
+#include "../asio/time_traits.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -705,7 +705,7 @@ private:
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
 #endif // defined(ASIO_HAS_BOOST_DATE_TIME)
        // || defined(GENERATING_DOCUMENTATION)

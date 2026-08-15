@@ -17,7 +17,7 @@
 
 #if !defined(ASIO_NO_IOSTREAM)
 
-#include "asio/detail/push_options.hpp"
+#include "../../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace ip {
@@ -32,7 +32,7 @@ std::basic_ostream<Elem, Traits>& operator<<(
 } // namespace ip
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../../asio/detail/pop_options.hpp"
 
 #endif // !defined(ASIO_NO_IOSTREAM)
 

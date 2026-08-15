@@ -15,16 +15,16 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/future.hpp"
+#include "../asio/detail/config.hpp"
+#include "../asio/detail/future.hpp"
 
 #if defined(ASIO_HAS_STD_FUTURE_CLASS) \
   || defined(GENERATING_DOCUMENTATION)
 
 #include <memory>
-#include "asio/detail/type_traits.hpp"
+#include "../asio/detail/type_traits.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -140,9 +140,9 @@ ASIO_INLINE_VARIABLE constexpr use_future_t<> use_future;
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../asio/detail/pop_options.hpp"
 
-#include "asio/impl/use_future.hpp"
+#include "../asio/impl/use_future.hpp"
 
 #endif // defined(ASIO_HAS_STD_FUTURE_CLASS)
        //   || defined(GENERATING_DOCUMENTATION)

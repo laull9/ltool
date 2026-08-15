@@ -15,14 +15,14 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
-#include "asio/detail/bind_handler.hpp"
-#include "asio/detail/completion_handler.hpp"
-#include "asio/detail/handler_alloc_helpers.hpp"
-#include "asio/error.hpp"
-#include "asio/experimental/detail/channel_operation.hpp"
+#include "../../../asio/detail/config.hpp"
+#include "../../../asio/detail/bind_handler.hpp"
+#include "../../../asio/detail/completion_handler.hpp"
+#include "../../../asio/detail/handler_alloc_helpers.hpp"
+#include "../../../asio/error.hpp"
+#include "../../../asio/experimental/detail/channel_operation.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace experimental {
@@ -121,6 +121,6 @@ private:
 } // namespace experimental
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_EXPERIMENTAL_DETAIL_CHANNEL_RECEIVE_OP_HPP

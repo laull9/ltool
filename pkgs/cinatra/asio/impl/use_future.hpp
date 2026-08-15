@@ -15,19 +15,19 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/detail/config.hpp"
+#include "../../asio/detail/config.hpp"
 #include <tuple>
-#include "asio/async_result.hpp"
-#include "asio/detail/memory.hpp"
-#include "asio/detail/type_traits.hpp"
-#include "asio/dispatch.hpp"
-#include "asio/disposition.hpp"
-#include "asio/execution.hpp"
-#include "asio/packaged_task.hpp"
-#include "asio/system_error.hpp"
-#include "asio/system_executor.hpp"
+#include "../../asio/async_result.hpp"
+#include "../../asio/detail/memory.hpp"
+#include "../../asio/detail/type_traits.hpp"
+#include "../../asio/dispatch.hpp"
+#include "../../asio/disposition.hpp"
+#include "../../asio/execution.hpp"
+#include "../../asio/packaged_task.hpp"
+#include "../../asio/system_error.hpp"
+#include "../../asio/system_executor.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 namespace detail {
@@ -637,6 +637,6 @@ struct require_member<
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_IMPL_USE_FUTURE_HPP

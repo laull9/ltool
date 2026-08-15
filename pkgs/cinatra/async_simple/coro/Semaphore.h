@@ -18,9 +18,9 @@
 
 #include <chrono>
 #include <cstddef>
-#include "async_simple/Common.h"
-#include "async_simple/coro/ConditionVariable.h"
-#include "async_simple/coro/SpinLock.h"
+#include "../../async_simple/Common.h"
+#include "../../async_simple/coro/ConditionVariable.h"
+#include "../../async_simple/coro/SpinLock.h"
 
 namespace async_simple::coro {
 

@@ -16,12 +16,12 @@
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
 #include <cstring>
-#include "asio/detail/handler_type_requirements.hpp"
-#include "asio/detail/memory.hpp"
-#include "asio/detail/service_registry.hpp"
-#include "asio/detail/throw_exception.hpp"
+#include "../../asio/detail/handler_type_requirements.hpp"
+#include "../../asio/detail/memory.hpp"
+#include "../../asio/detail/service_registry.hpp"
+#include "../../asio/detail/throw_exception.hpp"
 
-#include "asio/detail/push_options.hpp"
+#include "../../asio/detail/push_options.hpp"
 
 namespace asio {
 
@@ -140,6 +140,6 @@ inline execution_context& execution_context::service::context()
 
 } // namespace asio
 
-#include "asio/detail/pop_options.hpp"
+#include "../../asio/detail/pop_options.hpp"
 
 #endif // ASIO_IMPL_EXECUTION_CONTEXT_HPP

@@ -25,10 +25,10 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
-#include "async_simple/Common.h"
-#include "async_simple/Executor.h"
-#include "async_simple/Try.h"
-#include "async_simple/util/move_only_function.h"
+#include "../async_simple/Common.h"
+#include "../async_simple/Executor.h"
+#include "../async_simple/Try.h"
+#include "../async_simple/util/move_only_function.h"
 
 namespace async_simple {
 
