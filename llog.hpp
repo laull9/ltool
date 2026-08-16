@@ -48,6 +48,8 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 
 #if LTOOL_PLATFORM_WINDOWS
@@ -102,7 +104,8 @@ using SourceLocation = std::source_location;
 /**
  * @brief 无 <source_location> 时的回退来源位置类型。
  *
- * 保存文件名、行号、函数名和列号；current() 由宏注入 __FILE__/__LINE__。
+ * 保存文件名、行号、函数名和列号；current() 仅返回空位置，实际调用位置由
+ * 宏 LTOOL_CURRENT_SOURCE_LOCATION 注入 __FILE__/__LINE__/__func__。
  */
 class SourceLocation {
 private:
@@ -115,10 +118,10 @@ public:
     /// 默认构造空位置。
     constexpr SourceLocation() noexcept = default;
 
-    /// 用各字段构造来源位置。
-    constexpr SourceLocation(const char* file_name, std::uint_least32_t line,
-                              const char* function_name = "",
-                              std::uint_least32_t column = 0) noexcept
+    /// 用各字段构造来源位置；explicit 防止字符串字面量被误当作位置隐式转换。
+    constexpr explicit SourceLocation(const char* file_name, std::uint_least32_t line,
+                                      const char* function_name = "",
+                                      std::uint_least32_t column = 0) noexcept
         : file_name_(file_name),
           function_name_(function_name),
           line_(line),
@@ -151,6 +154,83 @@ public:
 };
 #define LTOOL_CURRENT_SOURCE_LOCATION ::LLog::SourceLocation(__FILE__, __LINE__, __func__)
 #endif
+
+namespace detail {
+
+// ---- 剥离技术（strip technique）----
+// 公共 writef 形参包为 (Args&&... args)，调用方可以选择在包末尾显式携带一个
+// SourceLocation 作为来源位置。下面的工具负责判断、剥离该位置，并把其余参数
+// （格式串 + 格式参数）转发给实际格式化输出。
+
+/// C++11 简易 index_sequence，用于展开剥离后的头参数包。
+template<std::size_t... Is>
+struct index_sequence {};
+
+template<std::size_t N, std::size_t... Is>
+struct make_index_sequence : make_index_sequence<N - 1, N - 1, Is...> {};
+
+template<std::size_t... Is>
+struct make_index_sequence<0, Is...> {
+    using type = index_sequence<Is...>;
+};
+
+/// 判断形参包末尾是否为 SourceLocation。
+template<class... Args>
+struct trailing_is_location;
+
+/// 空包：末尾不存在位置。
+template<>
+struct trailing_is_location<> : std::false_type {};
+
+/// 只剩一个参数：直接检查其类型。
+template<class T>
+struct trailing_is_location<T> : std::is_same<typename std::decay<T>::type, SourceLocation> {};
+
+/// 多于一个参数：剥掉头部继续检查末尾。
+template<class T, class... Rest>
+struct trailing_is_location<T, Rest...> : trailing_is_location<Rest...> {};
+
+/// 实际格式化输出：第一个参数为格式串，其余为格式参数，位置单独传入。
+/// 注：格式串经剥离转发后不再是字面量常量表达式，fmt 的 consteval format_string
+/// 无法在函数体内构造，因此经 fmt::runtime 走运行时格式化路径（fmt::format_error 兜底）。
+template<class LoggerT, class Fmt, class... Rest>
+void writef_forward(LoggerT& logger, Level severity, SourceLocation location, Fmt&& fmt_text,
+                    Rest&&... rest) {
+    if (!logger.enabled(severity)) {
+        return;
+    }
+    logger.write(severity,
+                 fmt::format(fmt::runtime(std::forward<Fmt>(fmt_text)),
+                             std::forward<Rest>(rest)...),
+                 location);
+}
+
+/// 按下标展开元组，把除位置外的参数转发给 writef_forward。
+template<class LoggerT, class... Args, std::size_t... Is>
+void writef_tuple(LoggerT& logger, Level severity, SourceLocation location,
+                  std::tuple<Args...>& tuple, index_sequence<Is...>) {
+    using tuple_type = std::tuple<Args...>;
+    writef_forward(logger, severity, location,
+                   std::forward<typename std::tuple_element<Is, tuple_type>::type>(
+                       std::get<Is>(tuple))...);
+}
+
+/// 分支一（包末尾是 SourceLocation）：剥离末尾位置，转发其余参数。
+template<class LoggerT, class... Args>
+void writef_split(LoggerT& logger, Level severity, std::true_type, Args&&... args) {
+    constexpr std::size_t count = sizeof...(Args);
+    std::tuple<Args&&...> tuple = std::forward_as_tuple(std::forward<Args>(args)...);
+    writef_tuple(logger, severity, std::get<count - 1>(tuple), tuple,
+                 typename make_index_sequence<count - 1>::type{});
+}
+
+/// 分支二（包末尾不是 SourceLocation）：使用默认当前位置。
+template<class LoggerT, class... Args>
+void writef_split(LoggerT& logger, Level severity, std::false_type, Args&&... args) {
+    writef_forward(logger, severity, SourceLocation::current(), std::forward<Args>(args)...);
+}
+
+} // namespace detail
 
 /// 一条日志记录：等级、时间、线程、消息和来源位置。
 struct Record {
@@ -444,16 +524,32 @@ public:
         write(severity, std::string(message ? message : ""), location);
     }
 
-    /// 用 fmt 格式串写一条日志记录。
+    /// 用 fmt 格式串写一条日志记录；参数包末尾可携带显式位置。省略位置时，
+    /// C++20 下位置指向 LLog.hpp 内部（writef_split 中 SourceLocation::current()
+    /// 的调用处），C++11 回退下为空位置；需要调用方位置时请用 LLOG_* 宏或
+    /// 显式传入 LTOOL_CURRENT_SOURCE_LOCATION。
     template<class... Args>
-    void writef(Level severity, SourceLocation location, fmt::format_string<Args...> fmt_text,
-                Args&&... args) {
-        if (!enabled(severity)) {
-            return;
-        }
-        write(severity, fmt::format(fmt_text, std::forward<Args>(args)...), location);
+    void writef(Level severity, Args&&... args) {
+        detail::writef_split(*this, severity, detail::trailing_is_location<Args...>{},
+                             std::forward<Args>(args)...);
     }
 };
+
+namespace detail {
+
+/// 编译期校验入口：格式串以 fmt::format_string<Args...> 传参，保留 consteval 编译期校验。
+/// 供 LLOG_* 宏使用（宏展开时格式串是字面量，可走编译期校验）；
+/// 与剥离版 writef 不同，该路径不经过 fmt::runtime，格式串与参数不匹配会在编译期报错。
+template<class... Args>
+void log_checked(Logger& logger, Level severity, SourceLocation location,
+                 fmt::format_string<Args...> fmt_text, Args&&... args) {
+    if (!logger.enabled(severity)) {
+        return;
+    }
+    logger.write(severity, fmt::format(fmt_text, std::forward<Args>(args)...), location);
+}
+
+} // namespace detail
 
 /// 返回进程级默认日志器（单例）。
 inline Logger& default_logger() {
@@ -508,11 +604,10 @@ inline void write(Level severity, const char* message,
     default_logger().write(severity, message, location);
 }
 
-/// 用默认日志器按 fmt 格式串写日志。
+/// 用默认日志器按 fmt 格式串写日志；参数包末尾可携带显式位置。
 template<class... Args>
-inline void writef(Level severity, SourceLocation location, fmt::format_string<Args...> fmt_text,
-                   Args&&... args) {
-    default_logger().writef(severity, location, fmt_text, std::forward<Args>(args)...);
+inline void writef(Level severity, Args&&... args) {
+    default_logger().writef(severity, std::forward<Args>(args)...);
 }
 
 /// 输出 trace 级日志。
@@ -579,42 +674,48 @@ inline void fatal(const char* message, SourceLocation location = SourceLocation:
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_TRACE
 #define LLOG_TRACE(...) \
-    ::LLog::writef(::LLog::Level::trace, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::trace, \
+                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_TRACE(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_DEBUG
 #define LLOG_DEBUG(...) \
-    ::LLog::writef(::LLog::Level::debug, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::debug, \
+                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_DEBUG(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_INFO
 #define LLOG_INFO(...) \
-    ::LLog::writef(::LLog::Level::info, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::info, \
+                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_INFO(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_WARN
 #define LLOG_WARN(...) \
-    ::LLog::writef(::LLog::Level::warn, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::warn, \
+                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_WARN(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_ERROR
 #define LLOG_ERROR(...) \
-    ::LLog::writef(::LLog::Level::error, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::error, \
+                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_ERROR(...) ((void)0)
 #endif
 
 #if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_FATAL
 #define LLOG_FATAL(...) \
-    ::LLog::writef(::LLog::Level::fatal, LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
+    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::fatal, \
+                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
 #else
 #define LLOG_FATAL(...) ((void)0)
 #endif

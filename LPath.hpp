@@ -49,10 +49,6 @@
 #endif // LTOOL_HAS_FILESYSTEM
 #define LPATH_HAS_FILESYSTEM LTOOL_HAS_FILESYSTEM
 
-#if LTOOL_HAS_RANGE_V3
-#include "LRange.hpp"
-#endif // LTOOL_HAS_RANGE_V3
-
 #if !LPATH_HAS_FILESYSTEM
 #error "LPath requires C++17 std::filesystem support"
 #endif // !LPATH_HAS_FILESYSTEM
@@ -182,11 +178,7 @@ public:
     using path_type = std::filesystem::path;
     using size_type = std::uintmax_t;
     using file_time_type = std::filesystem::file_time_type;
-#if LTOOL_HAS_RANGE_V3
-    using entry_list = LRange::ContainerRange<std::vector<LPath>>;
-#else
     using entry_list = std::vector<LPath>;
-#endif // LTOOL_HAS_RANGE_V3
 
     /// 创建空路径。
     LPath() = default;

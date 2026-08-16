@@ -14,6 +14,7 @@
  * - LConfig     ：JSON/TOML/YAML 统一配置读取、写入与环境变量覆盖。
  * - LEnv        ：.env 文件解析与进程环境变量辅助。
  * - LTimer      ：chrono 计时器与作用域计时器。
+ * - LScheduler  ：定时任务调度器（一次性/周期任务，可取消，需 C++20）。
  * - LRandom     ：随机数、抽样、洗牌、随机文本与 UUID。
  * - LTable      ：命令行 Unicode 表格。
  * - LPath       ：std::filesystem::path 薄封装与目录工具。
@@ -62,6 +63,11 @@
 
 #include "LEnv.hpp"
 #include "LTimer.hpp"
+
+#if LTOOL_HAS_CPP20
+#include "LScheduler.hpp"
+#endif
+
 #include "LRandom.hpp"
 #include "LTable.hpp"
 

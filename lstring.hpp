@@ -1273,11 +1273,6 @@ public:
     }
 #endif // LSTRING_HAS_RANGES
 
-    /// 对左值对象隐式暴露底层 std::string 的可写引用。
-    operator std::string&() & noexcept {
-        return data_;
-    }
-
     /// 隐式暴露底层 std::string 的只读引用。
     operator const std::string&() const& noexcept {
         return data_;
@@ -2325,10 +2320,11 @@ public:
      * 不抛出异常。
      */
     template<class T>
-        LTOOL_REQUIRES(std::integral<LStringDetail::remove_cvref_t<T>>)
+        LTOOL_REQUIRES(std::integral<LStringDetail::remove_cvref_t<T>> &&
+                       !std::is_same<LStringDetail::remove_cvref_t<T>, bool>::value)
     LTOOL_CONSTRAINED_RETURN(
         std::optional<T>,
-        std::is_integral<T>::value)
+        std::is_integral<T>::value && !std::is_same<T, bool>::value)
     to_number(int base = 10) const {
         auto text = trimmed().view();
         T value {};

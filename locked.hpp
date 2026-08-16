@@ -189,11 +189,29 @@ public:
         });
     }
 
-    /// 在写锁内就地重新构造被保护数据。
+    /// 在写锁内就地重建被保护数据（异常安全）。
+    ///
+    /// 与 std::optional::emplace 的"原地构造"语义一致：先销毁旧值，再在
+    /// 原内存位置直接构造新值。T 可移动/可拷贝构造时，先在临时对象中完成
+    /// 参数构造——若参数构造抛异常，原值不受影响；随后销毁旧值并原地放置
+    /// 新值（需要 T 可移动构造，不可移动时退化为拷贝构造）。注意：该放置
+    /// 阶段（placement move/copy）本身若抛出（如移动/拷贝构造函数抛异常或
+    /// bad_alloc），data_ 已处于销毁状态，调用方需自行恢复——与直接原地构造
+    /// 分支的权衡一致。T 既不可移动也不可拷贝构造时退化为直接原地构造，
+    /// 此时若参数构造抛异常，data_ 同样已处于销毁状态，调用方需自行处理。
     template<class... Args>
     void emplace(Args&&... args) {
-        with_write([&](T& data) {
-            data = T(std::forward<Args>(args)...);
-        });
+        if constexpr (std::move_constructible<T> || std::copy_constructible<T>) {
+            T tmp(std::forward<Args>(args)...);
+            data_.~T(); // 析构不抛异常
+            if constexpr (std::move_constructible<T>) {
+                ::new (static_cast<void*>(&data_)) T(std::move(tmp));
+            } else {
+                ::new (static_cast<void*>(&data_)) T(tmp);
+            }
+        } else {
+            data_.~T();
+            ::new (static_cast<void*>(&data_)) T(std::forward<Args>(args)...);
+        }
     }
 };

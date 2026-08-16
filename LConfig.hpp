@@ -38,6 +38,7 @@
 #include "detail/LToolConfig.hpp"
 #include "detail/LConcepts.hpp"
 #include "LEnv.hpp"
+#include "LFile.hpp"
 #include "LJson.hpp"
 #include "LToml.hpp"
 #include "LYaml.hpp"
@@ -373,21 +374,10 @@ inline std::string read_file_text(const std::string& path) {
     return out.str();
 }
 
-/// 以二进制模式把文本整体写入文件。
+/// 原子地把文本整体写入文件：写同目录临时文件 + fsync + rename 替换，
+/// 崩溃/磁盘满也不会截断原文件。
 inline void write_file_text(const std::string& path, const std::string& text) {
-    std::ofstream out(path.c_str(), std::ios::binary);
-    if (!out) {
-        throw std::runtime_error("LConfig failed to open file for writing: " + path);
-    }
-    out << text;
-    out.flush();
-    if (!out) {
-        throw std::runtime_error("LConfig failed to write file: " + path);
-    }
-    out.close();
-    if (!out) {
-        throw std::runtime_error("LConfig failed to close file: " + path);
-    }
+    LFile::atomic_write_bytes(path, text);
 }
 
 /// 把字符串转为小写（逐字节）。
@@ -729,7 +719,7 @@ std::string write(const T& value, Format format = Format::json) {
     return detail::write_text(value, detail::resolve_format(format));
 }
 
-/// 把结构体序列化并写入文件。
+/// 把结构体序列化并原子写入文件（临时文件 + rename，避免截断写丢数据）。
 template<class T>
 void save(const std::string& path, const T& value, Format format = Format::auto_detect) {
     detail::write_file_text(path, write(value, detail::resolve_format(format, path)));

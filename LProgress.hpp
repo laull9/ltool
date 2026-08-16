@@ -490,27 +490,52 @@ public:
     }
 
     /// 仅启动内部测量（如速度统计）而不显示；随后仍可调用 show() 显示。
+    /// 空句柄（默认构造后未赋值）调用时抛 std::logic_error。
     void start() {
+        if (!handle_) {
+            throw std::logic_error(
+                "LProgress::Display::start() called on empty display handle");
+        }
         handle_->start();
     }
 
     /// 启动显示；已在运行时重复调用无效果。
+    /// 空句柄（默认构造后未赋值）调用时抛 std::logic_error。
     void show() {
+        if (!handle_) {
+            throw std::logic_error(
+                "LProgress::Display::show() called on empty display handle");
+        }
         handle_->show();
     }
 
     /// 结束显示；未运行时重复调用无效果。
+    /// 空句柄（默认构造后未赋值）调用时抛 std::logic_error。
     void done() {
+        if (!handle_) {
+            throw std::logic_error(
+                "LProgress::Display::done() called on empty display handle");
+        }
         handle_->done();
     }
 
     /// 判断显示线程是否正在运行。
+    /// 空句柄（默认构造后未赋值）调用时抛 std::logic_error。
     bool running() const {
+        if (!handle_) {
+            throw std::logic_error(
+                "LProgress::Display::running() called on empty display handle");
+        }
         return handle_->running();
     }
 
     /// 返回显示使用的输出流。
+    /// 空句柄（默认构造后未赋值）调用时抛 std::logic_error。
     std::ostream& out() const {
+        if (!handle_) {
+            throw std::logic_error(
+                "LProgress::Display::out() called on empty display handle");
+        }
         return handle_->out();
     }
 
@@ -534,7 +559,9 @@ public:
     Animation() = default;
 
     /// 创建并（默认）立即开始显示等待动画。
-    explicit Animation(const AnimationConfig& cfg = {})
+    /// 注意：这里不使用默认参数 `= {}`，否则与上面的默认构造产生
+    /// 重载歧义，导致"默认构造空句柄"（文档语义）无法编译。
+    explicit Animation(const AnimationConfig& cfg)
         : Display(barkeep::Animation(detail::to_barkeep(cfg))) {}
 };
 
@@ -548,18 +575,30 @@ public:
     Status() = default;
 
     /// 创建并（默认）立即开始显示状态消息。
-    explicit Status(const AnimationConfig& cfg = {}) {
+    /// 注意：这里不使用默认参数 `= {}`，否则与上面的默认构造产生
+    /// 重载歧义，导致"默认构造空句柄"（文档语义）无法编译。
+    explicit Status(const AnimationConfig& cfg) {
         status_ = barkeep::Status(detail::to_barkeep(cfg));
         handle_ = status_;
     }
 
     /// 更新显示的消息（与显示线程同步）。
+    /// 空句柄（默认构造后未赋值）调用时抛 std::logic_error。
     void message(const std::string& text) {
+        if (!status_) {
+            throw std::logic_error(
+                "LProgress::Status::message() called on empty display handle");
+        }
         status_->message(text);
     }
 
     /// 获取当前显示的消息。
+    /// 空句柄（默认构造后未赋值）调用时抛 std::logic_error。
     std::string message() const {
+        if (!status_) {
+            throw std::logic_error(
+                "LProgress::Status::message() called on empty display handle");
+        }
         return status_->message();
     }
 };
