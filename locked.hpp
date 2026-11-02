@@ -27,6 +27,8 @@
 #include <utility>
 #include <functional>
 #include <concepts>
+#include <memory>
+#include <new>
 
 namespace LockedDetail {
 
@@ -131,6 +133,11 @@ private:
         bool owns_lock() const {
             return lock_.owns_lock();
         }
+
+        /// 锁被持有时为 true，支持 `if (auto guard = x.rlock())` 写法。
+        explicit operator bool() const noexcept {
+            return lock_.owns_lock();
+        }
     };
 
 public:
@@ -191,27 +198,45 @@ public:
 
     /// 在写锁内就地重建被保护数据（异常安全）。
     ///
-    /// 与 std::optional::emplace 的"原地构造"语义一致：先销毁旧值，再在
-    /// 原内存位置直接构造新值。T 可移动/可拷贝构造时，先在临时对象中完成
-    /// 参数构造——若参数构造抛异常，原值不受影响；随后销毁旧值并原地放置
-    /// 新值（需要 T 可移动构造，不可移动时退化为拷贝构造）。注意：该放置
-    /// 阶段（placement move/copy）本身若抛出（如移动/拷贝构造函数抛异常或
-    /// bad_alloc），data_ 已处于销毁状态，调用方需自行恢复——与直接原地构造
-    /// 分支的权衡一致。T 既不可移动也不可拷贝构造时退化为直接原地构造，
-    /// 此时若参数构造抛异常，data_ 同样已处于销毁状态，调用方需自行处理。
+    /// 参数先在锁外构造为临时对象：若构造抛异常，原值不受影响，也不会持锁。
+    /// 随后在写锁内替换：
+    /// - T 可移动/拷贝赋值：直接赋值，赋值抛异常时原值由 T 自身的赋值语义保证；
+    /// - T 不可赋值（如含 const 成员）：销毁旧值后原地移动/拷贝构造新值。该放置
+    ///   步骤若抛异常，data_ 将处于已销毁状态，因此在 noexcept 中执行，失败时
+    ///   std::terminate，而不是留下会被二次析构的对象；
+    /// - T 既不可移动也不可拷贝构造：只能销毁后直接原地构造，同样在 noexcept
+    ///   中执行（参数构造抛异常即 std::terminate）。
     template<class... Args>
     void emplace(Args&&... args) {
         if constexpr (std::move_constructible<T> || std::copy_constructible<T>) {
             T tmp(std::forward<Args>(args)...);
-            data_.~T(); // 析构不抛异常
-            if constexpr (std::move_constructible<T>) {
-                ::new (static_cast<void*>(&data_)) T(std::move(tmp));
+            auto lock = LockedDetail::WriteLock<Mutex>(mutex_);
+            if constexpr (std::is_move_assignable_v<T>) {
+                data_ = std::move(tmp);
+            } else if constexpr (std::is_copy_assignable_v<T>) {
+                data_ = tmp;
             } else {
-                ::new (static_cast<void*>(&data_)) T(tmp);
+                rebuild_noexcept_([&tmp](void* where) {
+                    if constexpr (std::move_constructible<T>) {
+                        ::new (where) T(std::move(tmp));
+                    } else {
+                        ::new (where) T(tmp);
+                    }
+                });
             }
         } else {
-            data_.~T();
-            ::new (static_cast<void*>(&data_)) T(std::forward<Args>(args)...);
+            auto lock = LockedDetail::WriteLock<Mutex>(mutex_);
+            rebuild_noexcept_([&](void* where) {
+                ::new (where) T(std::forward<Args>(args)...);
+            });
         }
+    }
+
+private:
+    /// 销毁 data_ 并用 construct(where) 原地重建；重建失败时 std::terminate。
+    template<class Construct>
+    void rebuild_noexcept_(Construct&& construct) noexcept {
+        data_.~T();
+        std::forward<Construct>(construct)(static_cast<void*>(std::addressof(data_)));
     }
 };

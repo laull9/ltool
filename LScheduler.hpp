@@ -277,8 +277,13 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
 
             const auto now = detail::steady_clock::now();
             if (heap.top().due > now) {
-                cv.wait_until(lock, heap.top().due, [this] {
+                // 截止时间必须拷贝：wait_until 按引用持有它，而其他线程 push 可能
+                // 使堆底层 vector 扩容（悬空引用）或改变堆顶。堆顶变得更早时也要
+                // 醒来重新计算等待时间，否则新插入的近期任务会被拖到旧截止时间。
+                const auto due = heap.top().due;
+                cv.wait_until(lock, due, [this, due] {
                     return stopping.load(std::memory_order_relaxed) || heap.empty() ||
+                           heap.top().due < due ||
                            heap.top().due <= detail::steady_clock::now();
                 });
                 continue;

@@ -325,10 +325,10 @@ public:
         return lhs == rhs.path_;
     }
 
-#if __cplusplus >= 202002L
+#if LTOOL_HAS_CPP20
     /// 按 path 的字典序进行三路比较。
     friend auto operator<=>(const LPath&, const LPath&) = default;
-#endif // __cplusplus >= 202002L
+#endif // LTOOL_HAS_CPP20
 
     /// 将路径字符串写入 ostream。
     friend std::ostream& operator<<(std::ostream& os, const LPath& value) {

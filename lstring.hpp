@@ -181,7 +181,7 @@ enum class LEncoding {
 
 namespace LStringDetail {
 
-#if __cplusplus >= 201703L
+#if LTOOL_HAS_CPP17
 using string_view = std::string_view;
 using wstring_view = std::wstring_view;
 
@@ -343,9 +343,9 @@ public:
         return value_;
     }
 };
-#endif // __cplusplus >= 201703L
+#endif // LTOOL_HAS_CPP17
 
-#if __cplusplus >= 202002L
+#if LTOOL_HAS_CPP20
 template<class T>
 using remove_cvref_t = std::remove_cvref_t<T>;
 #else
@@ -356,7 +356,7 @@ struct remove_cvref {
 
 template<class T>
 using remove_cvref_t = typename remove_cvref<T>::type;
-#endif // __cplusplus >= 202002L
+#endif // LTOOL_HAS_CPP20
 
 template<class T, class = void>
 struct is_char_iterator : std::false_type {};
@@ -1325,11 +1325,11 @@ public:
 
     /// 返回指向存储字节的可写指针。
     char* data() noexcept {
-#if __cplusplus >= 201703L
+#if LTOOL_HAS_CPP17
         return data_.data();
 #else
         return data_.empty() ? nullptr : &data_[0];
-#endif // __cplusplus >= 201703L
+#endif // LTOOL_HAS_CPP17
     }
 
     /// 判断当前是否未存储任何字节。
@@ -1709,10 +1709,10 @@ public:
         return out;
     }
 
-#if __cplusplus >= 202002L
+#if LTOOL_HAS_CPP20
     /// 按字节字典序进行三路比较。
     friend auto operator<=>(const LString&, const LString&) = default;
-#endif // __cplusplus >= 202002L
+#endif // LTOOL_HAS_CPP20
 
     /// 按存储字节比较两个 LString。
     friend bool operator==(const LString& lhs, const LString& rhs) noexcept {
@@ -2925,11 +2925,11 @@ public:
 
     /// 使用当前标准下可用的标准哈希器对存储字节求哈希。
     std::size_t hash() const noexcept {
-#if __cplusplus >= 201703L
+#if LTOOL_HAS_CPP17
         return std::hash<LStringDetail::string_view> {}(view());
 #else
         return std::hash<std::string> {}(data_);
-#endif // __cplusplus >= 201703L
+#endif // LTOOL_HAS_CPP17
     }
 };
 

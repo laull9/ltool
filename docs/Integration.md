@@ -6,7 +6,7 @@
 
 ```cmake
 add_subdirectory(path/to/ltool)
-target_link_libraries(your_target PRIVATE LTool::ltool)
+target_link_libraries(your_target PRIVATE ltool::ltool)
 ```
 
 也可以单独配置和安装：
@@ -21,11 +21,20 @@ cmake --install build/ltool
 
 ## 入口头文件
 
-- `LTool.hpp`：常用组件总入口，会引入 `detail/LToolConfig.hpp`、`LString.hpp`、`LLog.hpp`、`LJson.hpp`、`LEnv.hpp`、`LTimer.hpp`、`LRandom.hpp`、`LDialog.hpp`、`LPath.hpp`、`LFile.hpp`、`Locked.hpp` 和 `LThreadPool.hpp`。
+- `LTool.hpp`：常用组件总入口。始终引入 `LString.hpp`、`LLog.hpp`、`LJson.hpp`、`LEnv.hpp`、`LTimer.hpp`、`LRandom.hpp`、`LTable.hpp`；其余组件按条件引入（见下表）。
 - `detail/LToolConfig.hpp`：提供 ltool 版本、C++ 标准、平台、编译器和常用特性检测宏，例如 `LTOOL_VERSION_STRING`、`LTOOL_HAS_CPP20`、`LTOOL_HAS_FILESYSTEM`、`LTOOL_PLATFORM_WINDOWS`，并提供 `LTool::version_string()`。
 - `detail/LFmt.hpp`：ltool 内部统一的 fmt 引入入口，处理内置 fmt、外部 fmt 和 header-only 配置。
 
-`LToml.hpp`、`LYaml.hpp` 和 `LConfig.hpp` 只在 C++20 起引入；`LPath.hpp` 和 `LFile.hpp` 只在检测到 C++17 `std::filesystem` 时引入；`LThreadPool.hpp` 只在 C++17 起引入；`Locked.hpp` 只在检测到 C++20 concepts 时引入。
+| 组件 | `LTool.hpp` 引入条件 |
+| --- | --- |
+| `LToml.hpp`、`LYaml.hpp`、`LConfig.hpp`、`LScheduler.hpp` | `LTOOL_HAS_CPP20` |
+| `LPath.hpp`、`LFile.hpp` | `LTOOL_HAS_FILESYSTEM`（C++17 `std::filesystem`） |
+| `Locked.hpp` | `LTOOL_HAS_CONCEPTS`（C++20 concepts） |
+| `LThreadPool.hpp` | `LTOOL_HAS_THREAD_POOL`（C++17） |
+| `LRange.hpp` | `LTOOL_HAS_RANGE_V3` |
+| `LDialog.hpp` | `LTOOL_HAS_PORTABLE_FILE_DIALOGS` |
+| `LProgress.hpp` | `LTOOL_HAS_BARKEEP` |
+| `LWeb.hpp`、`LImGui.hpp` | 不在聚合入口中，需单独 `#include` |
 
 ## 外部依赖
 
@@ -56,30 +65,17 @@ cmake --install build/ltool
 
 ```text
 .
-├── LTool.hpp
-├── detail/LToolConfig.hpp
-├── detail/LFmt.hpp
-├── LImGui.hpp
-├── LDialog.hpp
-├── detail/LImGui.hpp
-├── detail/LDialog.hpp
-├── detail/LHelloImGui.hpp
-├── detail/LImGuiBundle.hpp
-├── LLog.hpp
-├── LJson.hpp
-├── LEnv.hpp
-├── LTimer.hpp
-├── LRandom.hpp
-├── LString.hpp
-├── LPath.hpp
-├── LFile.hpp
-├── Locked.hpp
-├── docs/
-└── pkgs/
-    ├── BS_thread_pool.hpp
-    ├── fmt/
-    ├── magic_enum/
-    ├── portable-file-dialogs/
-    ├── rfl.hpp
-    └── rfl/
+├── LTool.hpp                聚合入口
+├── LString.hpp  LLog.hpp  LJson.hpp  LToml.hpp  LYaml.hpp  LConfig.hpp  LEnv.hpp
+├── LPath.hpp  LFile.hpp  LTimer.hpp  LScheduler.hpp  LRandom.hpp  LTable.hpp
+├── LThreadPool.hpp  Locked.hpp  LRange.hpp  LProgress.hpp  LDialog.hpp
+├── LWeb.hpp  LImGui.hpp     需单独引入
+├── detail/                  实现细节（LToolConfig/LFmt/LBase64/LMd5/LSha256/LImGui/LDialog…）
+│   └── LWeb/                LWeb 按职责拆分的实现
+├── docs/                    模块文档
+└── pkgs/                    第三方依赖（只读，本地修改见 pkgs/README_LTOOL.md）
+    ├── fmt/  magic_enum/  rfl/  rfl.hpp  range-v3/  cinatra/
+    ├── portable-file-dialogs/  imgui_bundle/  hello_imgui/
+    ├── BS_thread_pool.hpp  barkeep.h  tabulate.hpp
+    └── rfl/thirdparty/      yyjson、toml++（toml.hpp）、fkYAML、ctre、enchantum
 ```

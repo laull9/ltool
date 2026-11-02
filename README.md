@@ -13,7 +13,7 @@
 - Web 应用层：基于内置 Cinatra 的 `LWeb`，提供 Router/Controller/Response/JSON/Middleware 薄封装与 `Native()` 逃生通道（需 C++20，单独引入）。
 - 可选 ImGui facade：检测到 Dear ImGui 后，可通过 `LImGui.hpp` 快速接入 HelloImGui、字体、主题和常用小组件。
 - 尽量贴近标准库：类型和接口围绕 `std::string`、`std::filesystem::path`、`std::mutex` / `std::shared_mutex` 展开。
-- 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`、`portable-file-dialogs`、`barkeep.h`、`toml++` 和 `fkYAML`。
+- 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`、`portable-file-dialogs`、`barkeep.h`、`tabulate.hpp`、`range-v3/`、`cinatra/`；yyjson、toml++ 和 fkYAML 随 reflect-cpp 位于 `pkgs/rfl/thirdparty/`。
 
 ## 项目约定
 
@@ -86,7 +86,7 @@ c++ -std=c++20 -I. demo.cpp -o demo -liconv
 
 ```cmake
 add_subdirectory(path/to/ltool)
-target_link_libraries(your_target PRIVATE LTool::ltool)
+target_link_libraries(your_target PRIVATE ltool::ltool)
 ```
 
 更多编译、依赖、宏开关和目录结构说明见 [docs/Integration.md](docs/Integration.md)。

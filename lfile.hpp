@@ -821,10 +821,10 @@ public:
         return lhs == rhs.path_;
     }
 
-#if __cplusplus >= 202002L
+#if LTOOL_HAS_CPP20
     /// 按路径三路比较。
     friend auto operator<=>(const LFile&, const LFile&) = default;
-#endif // __cplusplus >= 202002L
+#endif // LTOOL_HAS_CPP20
 
     /// 把路径字符串写入输出流。
     friend std::ostream& operator<<(std::ostream& os, const LFile& value) {
