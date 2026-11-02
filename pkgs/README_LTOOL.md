@@ -24,6 +24,12 @@ Cinatra 原生使用 `#include "asio/..."`、`#include "async_simple/..."`、
 - 不改写 `ylt/` 前缀（ylt 位于 `cinatra/ylt/`，相对自身目录可直接解析）、
   条件编译的系统库（brotli/zlib）与标准库头。
 
+另有一处兼容性修补：`cinatra/string_resize.hpp` 中 libc++ 分支的
+`template class vector_thief<..., &std::vector<char>::__end_>` 显式实例化
+加上与 `resize(std::vector&)` 使用处一致的 `defined(_LIBCPP_HAS_NO_ASAN)` 条件。
+新版 libc++（LLVM 21+/Apple clang 21+）已移除 `std::vector::__end_`，无条件实例化会编译失败；
+条件不满足时 `resize()` 本就退回 `std::vector::resize`，行为不变。
+
 升级 Cinatra 时：重新拷入新版后执行 `python3 pkgs/cinatra_fix_relative_includes.py`
 （脚本幂等，可重复运行）。此改动不影响外部使用者以 `-I pkgs/cinatra` 方式
 使用 cinatra 本身。

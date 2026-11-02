@@ -153,7 +153,7 @@ struct LWebJsonCodec {
     /// 把任意可反射类型序列化为 JSON 文本。
     template <typename T>
     static std::string Serialize(const T& value) {
-        if constexpr (std::same_as<std::remove_cvref_t<T>, LJson::Json>) {
+        if constexpr (std::derived_from<std::remove_cvref_t<T>, LJson::Json>) {
             return value.dump();
         }
         else {

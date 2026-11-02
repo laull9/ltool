@@ -106,7 +106,8 @@ class vector_thief {
 #if defined(__GLIBCXX__)  // libstdc++
 template class vector_thief<decltype(&std::vector<char>::_M_impl),
                             &std::vector<char>::_M_impl>;
-#elif defined(_LIBCPP_VERSION)
+#elif defined(_LIBCPP_VERSION) && defined(_LIBCPP_HAS_NO_ASAN)
+// LTool: 与下方 resize() 的使用条件保持一致；新版 libc++ 已移除 __end_ 成员。
 template class vector_thief<decltype(&std::vector<char>::__end_),
                             &std::vector<char>::__end_>;
 #elif defined(_MSVC_STL_VERSION)

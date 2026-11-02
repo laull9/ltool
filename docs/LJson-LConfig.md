@@ -10,6 +10,32 @@
 
 - `LJson::JsonView`：非拥有 JSON 文本视图，字符串输入路径零拷贝；仅可在源 `Json` 存活且未修改期间使用。
 - `LJson::Json`：拥有 JSON 文本和内建 DOM 的统一中间表示，支持随机增删改查；检测到外部 JSON 库时可作为转换入口/出口。
+- `LJson::JsonRef`：`Json` 子节点的可写引用（继承自 `Json`，可用在任何接受 `const Json&` 的地方），由可写访问接口返回。
+
+### 值语义与引用
+
+`Json` 是值类型：拷贝、赋值、放进容器都会得到独立副本。非 const 的 `operator[]`、`at()`、`at_pointer()`、`pointer()`、`find_recursive()`、`emplace_back()` 返回 `JsonRef`，`for_each_recursive()` 的 visitor 也收到 `JsonRef`，写入会作用于原文档；const 访问返回 `Json` 副本。
+
+```cpp
+auto root = LJson::parse(R"({"user":{"name":"Ada"},"tags":[1,2]})");
+
+auto name = root["user"]["name"];   // JsonRef：引用 root 中的节点
+name = "Grace";                     // 写回 root
+
+LJson::Json user = root["user"];    // Json：独立副本
+user["name"] = "Linus";             // 不影响 root
+
+root["backup"] = root["user"];      // JsonRef = JsonRef：复制值
+root["tags"][0] = 10;               // 任意整数类型都可做下标
+
+root.for_each_recursive([](auto&& node) {   // 用 auto&& 接收 JsonRef 才能原地修改
+    if (node.is_number()) node = 0;
+});
+```
+
+`JsonRef` 之间赋值写入的是值，不会改变引用目标。`JsonRef` 不应长期保存：父节点被整体替换后，旧引用不再反映文档内容。
+
+> 内存说明：yyjson 可变文档按 arena 分配，反复覆写节点不会释放旧值。长生命周期且频繁修改的对象可定期用 `LJson::parse(json.dump())` 重建。
 
 当前适配器：
 
