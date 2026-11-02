@@ -12,6 +12,7 @@
 - 终端进度显示：基于内置 barkeep 的 `LProgress`，提供等待动画、计数、进度条、状态消息与组合显示；进度条按终端宽度自适应（可设上限），默认显示已运行时间、速度与预估剩余时间。
 - Web 应用层：基于内置 Cinatra 的 `LWeb`，提供 Router/Controller/Response/JSON/Middleware 薄封装与 `Native()` 逃生通道（需 C++20，单独引入）。
 - 可选 ImGui facade：检测到 Dear ImGui 后，可通过 `LImGui.hpp` 快速接入 HelloImGui、字体、主题和常用小组件。
+- C++20 模块：`import ltool;` 导出与 `LTool.hpp` 相同的组件，日志宏通过 `LLogMacros.hpp` 提供（见 [Modules](docs/Modules.md)）。
 - 尽量贴近标准库：类型和接口围绕 `std::string`、`std::filesystem::path`、`std::mutex` / `std::shared_mutex` 展开。
 - 外部依赖随仓库提供并统一放在 `pkgs/`：`fmt/`、`magic_enum/`、`rfl/`、`rfl.hpp`、`BS_thread_pool.hpp`、`portable-file-dialogs`、`barkeep.h`、`tabulate.hpp`、`range-v3/`、`cinatra/`；yyjson、toml++ 和 fkYAML 随 reflect-cpp 位于 `pkgs/rfl/thirdparty/`。
 
@@ -73,6 +74,7 @@ c++ -std=c++20 -I. demo.cpp -o demo -liconv
 | 加锁访问 | [Locked](docs/Locked.md) | `Locked.hpp` |
 | Web 应用层 | [LWeb](docs/LWeb.md) | `LWeb.hpp` |
 | ImGui facade | [LImGui](docs/LImGui.md) | `LImGui.hpp` |
+| C++20 模块 | [Modules](docs/Modules.md) | `modules/ltool.cppm`、`LLogMacros.hpp` |
 | 集成、依赖和开关 | [集成说明](docs/Integration.md) | `LTool.hpp`、`detail/LToolConfig.hpp`、`detail/LFmt.hpp` |
 
 ## 头文件入口
@@ -89,7 +91,20 @@ add_subdirectory(path/to/ltool)
 target_link_libraries(your_target PRIVATE ltool::ltool)
 ```
 
+需要 `import ltool;` 时开启 `LTOOL_BUILD_MODULE`（CMake 3.28+）并链接 `ltool::module`，详见 [docs/Modules.md](docs/Modules.md)。
+
 更多编译、依赖、宏开关和目录结构说明见 [docs/Integration.md](docs/Integration.md)。
+
+## 测试
+
+测试位于 `tests/`，用 xmake 构建（需要网络获取 Catch2 等测试依赖）：
+
+```bash
+xmake f -P . -y
+xmake test -P .
+```
+
+`-P .` 让 xmake 以 ltool 目录为工程目录；ltool 嵌在其他 xmake 工程中时必须带上，否则会构建外层工程。
 
 ## 建议用法
 

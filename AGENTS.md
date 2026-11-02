@@ -17,6 +17,10 @@ ltool 是纯头文件 C++ 工具库（C++20 为主，部分模块兼容 C++11/17
   `LTOOL_HAS_CONCEPTS` 等。不要直接写 `__cplusplus`（MSVC 未开 `/Zc:__cplusplus` 时恒为 199711L）。
   可选依赖用 `LTOOL_USE_X`（用户开关，默认 1）+ `LTOOL_HAS_X`（检测结果）两层宏。
 - **fmt 统一从 `detail/LFmt.hpp` 引入**，不直接 include `pkgs/fmt/*`。
+- **新增公开 API 必须同步导出到 `modules/ltool.cppm`**（`using` 声明，条件编译的 API 套用相同宏条件），
+  并在 `tests/LModule_test.cpp` 中通过 `import ltool;` 覆盖；否则模块用户看不到它。
+- **用户可见的宏放进只含宏的头文件**（如 `LLogMacros.hpp`），宏展开后引用的内部函数要在模块中导出；
+  宏本身不能依赖 `LTOOL_HAS_*` 等配置宏，因为模块用户看不到它们。
 
 ## 命名与组织
 
@@ -51,6 +55,8 @@ ltool 是纯头文件 C++ 工具库（C++20 为主，部分模块兼容 C++11/17
 | `LDialog.hpp` | 原生文件/消息对话框（portable-file-dialogs） | — |
 | `LWeb.hpp` | Cinatra 上的 Router/Middleware/JWT/HttpClient，需单独 include | C++20 协程；需 OpenSSL 时链接 |
 | `LImGui.hpp` | HelloImGui/字体/主题 facade，需单独 include | 检测到 imgui 时启用 |
+| `modules/ltool.cppm` | C++20 模块 `import ltool;`，导出与 `LTool.hpp` 相同的组件（不含 LWeb/LImGui） | C++20；见 `docs/Modules.md` |
+| `LLogMacros.hpp` | 只含 `LLOG_*`、`LTOOL_LOG_LEVEL_*`、`LTOOL_CURRENT_SOURCE_LOCATION` 宏；模块用户在 import 后包含 | — |
 
 ## 必须知道的陷阱
 
@@ -76,25 +82,32 @@ ltool 是纯头文件 C++ 工具库（C++20 为主，部分模块兼容 C++11/17
 
 ## 构建与测试
 
-ltool 本身无需编译。在宿主 playground（本目录的上一级，xmake 工程）中：
+ltool 本身无需编译。根目录的 `xmake.lua` 是只用于测试的独立工程，在本目录执行：
 
 ```bash
-xmake build -g test                 # 编译全部测试（tests/*.cpp 每个文件一个目标）
-xmake run LJson_test                # 运行单个测试（Catch2，可附加过滤参数）
-xmake test                          # 运行全部测试
+xmake f -P . -y                     # 首次配置（-P . 见下方说明）
+xmake build -P .                    # 编译全部测试（tests/*.cpp 每个文件一个目标）
+xmake test -P .                     # 运行全部测试
+xmake run -P . LJson_test           # 运行单个测试（Catch2，可附加过滤参数）
 ```
 
-- 新增测试：在 `../tests/` 添加 `<模块>_test.cpp` 即自动生成目标；需要额外包时在 `../tests/xmake.lua`
-  中按目标名追加 `add_packages`。
+- **始终带 `-P .`**：ltool 常作为子目录嵌在使用方的 xmake 工程里，xmake 会向上找到已配置的外层工程并
+  构建它（同时改动它的配置）。单独克隆 ltool 时可省略。
+- macOS 未指定 `--toolchain` 时使用 PATH 中的 LLVM clang：Xcode 的 Apple clang 无法完成模块依赖扫描，
+  其 libc++ 也与自带 range-v3 冲突。编译器不支持模块扫描时用 `xmake f -P . --modules=n` 跳过 `LModule_test`。
+- 新增测试：在 `tests/` 添加 `<模块>_test.cpp` 即自动生成目标；需要额外包时在根目录 `xmake.lua` 中
+  `add_requires`，并在 `tests/xmake.lua` 中按目标名追加 `add_packages`。
 - 修改某模块后至少运行对应 `<模块>_test`；改动 `detail/LToolConfig.hpp`、`detail/LFmt.hpp`、`LString.hpp`
   等基础头文件时运行全部测试。
 - 修改头部 `@code` 示例或 `README.md` 示例时，确保示例能实际编译（曾出现文档引用不存在 API 的问题）。
 - 涉及线程的代码建议额外用 `-fsanitize=thread` 编译对应测试验证。
-- 独立集成用 CMake：`add_subdirectory(ltool)` + `target_link_libraries(x PRIVATE ltool::ltool)`。
+- 独立集成用 CMake：`add_subdirectory(ltool)` + `target_link_libraries(x PRIVATE ltool::ltool)`；
+  模块用法开启 `LTOOL_BUILD_MODULE` 并链接 `ltool::module`。
+- 修改 `modules/ltool.cppm`、`LLogMacros.hpp` 或任何公开 API 后运行 `LModule_test`。
 
 ## 改动检查清单
 
-1. 新 API 有一行中文注释，模块头部 `@code` 示例与 `docs/` 已同步。
+1. 新 API 有一行中文注释，模块头部 `@code` 示例与 `docs/` 已同步，并已在 `modules/ltool.cppm` 导出。
 2. 只用 `LTOOL_HAS_*` 判断特性；可选依赖缺失时能降级或给出清晰 `#error`/`static_assert`。
 3. 非模板函数 `inline`，无新增 `.cpp`，include 均为相对路径。
 4. 对应测试通过；新增行为有测试覆盖。

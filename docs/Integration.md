@@ -17,7 +17,9 @@ cmake --build build/ltool
 cmake --install build/ltool
 ```
 
-仓库根目录的 `CMakeLists.txt` 只是本地 playground/test 工程，不再承载 ltool 的包定义和安装规则。
+开启 `-DLTOOL_BUILD_MODULE=ON`（CMake 3.28+，Ninja/Visual Studio 生成器）会额外提供 C++20 模块目标 `ltool::module`，使用方即可 `import ltool;`，见 [Modules](Modules.md)。
+
+根目录的 `xmake.lua` 只用于构建和运行 `tests/` 下的测试，使用方无需引入；在 ltool 目录执行 `xmake test -P .` 即可（`-P .` 避免被外层 xmake 工程接管，详见 [AGENTS.md](../AGENTS.md)）。
 
 ## 入口头文件
 
@@ -70,9 +72,13 @@ cmake --install build/ltool
 ├── LPath.hpp  LFile.hpp  LTimer.hpp  LScheduler.hpp  LRandom.hpp  LTable.hpp
 ├── LThreadPool.hpp  Locked.hpp  LRange.hpp  LProgress.hpp  LDialog.hpp
 ├── LWeb.hpp  LImGui.hpp     需单独引入
+├── LLogMacros.hpp           只含日志宏，供 import ltool 后包含
+├── modules/ltool.cppm       C++20 模块接口单元（import ltool;）
 ├── detail/                  实现细节（LToolConfig/LFmt/LBase64/LMd5/LSha256/LImGui/LDialog…）
 │   └── LWeb/                LWeb 按职责拆分的实现
 ├── docs/                    模块文档
+├── tests/                   Catch2 测试（每个 *_test.cpp 一个目标）
+├── xmake.lua                测试工程（xmake test -P .）
 └── pkgs/                    第三方依赖（只读，本地修改见 pkgs/README_LTOOL.md）
     ├── fmt/  magic_enum/  rfl/  rfl.hpp  range-v3/  cinatra/
     ├── portable-file-dialogs/  imgui_bundle/  hello_imgui/
