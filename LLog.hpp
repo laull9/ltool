@@ -64,17 +64,8 @@
 
 #include "detail/LFmt.hpp"
 
-#define LTOOL_LOG_LEVEL_TRACE 0
-#define LTOOL_LOG_LEVEL_DEBUG 1
-#define LTOOL_LOG_LEVEL_INFO 2
-#define LTOOL_LOG_LEVEL_WARN 3
-#define LTOOL_LOG_LEVEL_ERROR 4
-#define LTOOL_LOG_LEVEL_FATAL 5
-#define LTOOL_LOG_LEVEL_OFF 6
-
-#ifndef LTOOL_ACTIVE_LOG_LEVEL
-#define LTOOL_ACTIVE_LOG_LEVEL LTOOL_LOG_LEVEL_TRACE
-#endif
+// 等级常量、LTOOL_CURRENT_SOURCE_LOCATION 与 LLOG_* 宏；模块用户在 import ltool 后单独 include 它。
+#include "LLogMacros.hpp"
 
 namespace LLog {
 
@@ -99,7 +90,6 @@ enum class ColorMode {
 #if LTOOL_HAS_SOURCE_LOCATION
 /// 编译期来源位置；有 <source_location> 时使用标准类型。
 using SourceLocation = std::source_location;
-#define LTOOL_CURRENT_SOURCE_LOCATION ::LLog::SourceLocation::current()
 #else
 /**
  * @brief 无 <source_location> 时的回退来源位置类型。
@@ -152,7 +142,6 @@ public:
         return column_;
     }
 };
-#define LTOOL_CURRENT_SOURCE_LOCATION ::LLog::SourceLocation(__FILE__, __LINE__, __func__)
 #endif
 
 namespace detail {
@@ -537,6 +526,22 @@ public:
 
 namespace detail {
 
+/// 供 LTOOL_CURRENT_SOURCE_LOCATION 使用：有 std::source_location 时返回 current
+/// （在宏展开处求值，即调用方位置），否则用 __FILE__/__LINE__/__func__ 构造。
+/// 宏因此与配置无关，模块用户无需看到 LTOOL_HAS_SOURCE_LOCATION。
+inline SourceLocation make_location(const char* file, unsigned long line, const char* function,
+                                    SourceLocation current) noexcept {
+#if LTOOL_HAS_SOURCE_LOCATION
+    LTOOL_UNUSED(file);
+    LTOOL_UNUSED(line);
+    LTOOL_UNUSED(function);
+    return current;
+#else
+    LTOOL_UNUSED(current);
+    return SourceLocation(file, static_cast<std::uint_least32_t>(line), function);
+#endif
+}
+
 /// 编译期校验入口：格式串以 fmt::format_string<Args...> 传参，保留 consteval 编译期校验。
 /// 供 LLOG_* 宏使用（宏展开时格式串是字面量，可走编译期校验）；
 /// 与剥离版 writef 不同，该路径不经过 fmt::runtime，格式串与参数不匹配会在编译期报错。
@@ -671,53 +676,5 @@ inline void fatal(const char* message, SourceLocation location = SourceLocation:
 }
 
 } // namespace LLog
-
-#if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_TRACE
-#define LLOG_TRACE(...) \
-    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::trace, \
-                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
-#else
-#define LLOG_TRACE(...) ((void)0)
-#endif
-
-#if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_DEBUG
-#define LLOG_DEBUG(...) \
-    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::debug, \
-                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
-#else
-#define LLOG_DEBUG(...) ((void)0)
-#endif
-
-#if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_INFO
-#define LLOG_INFO(...) \
-    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::info, \
-                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
-#else
-#define LLOG_INFO(...) ((void)0)
-#endif
-
-#if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_WARN
-#define LLOG_WARN(...) \
-    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::warn, \
-                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
-#else
-#define LLOG_WARN(...) ((void)0)
-#endif
-
-#if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_ERROR
-#define LLOG_ERROR(...) \
-    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::error, \
-                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
-#else
-#define LLOG_ERROR(...) ((void)0)
-#endif
-
-#if LTOOL_ACTIVE_LOG_LEVEL <= LTOOL_LOG_LEVEL_FATAL
-#define LLOG_FATAL(...) \
-    ::LLog::detail::log_checked(::LLog::default_logger(), ::LLog::Level::fatal, \
-                                LTOOL_CURRENT_SOURCE_LOCATION, __VA_ARGS__)
-#else
-#define LLOG_FATAL(...) ((void)0)
-#endif
 
 #endif // LTOOL_LLOG_INCLUDE

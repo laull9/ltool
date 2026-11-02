@@ -6,7 +6,7 @@
 
 ## 常用能力
 
-- `LLOG_TRACE`、`LLOG_DEBUG`、`LLOG_INFO`、`LLOG_WARN`、`LLOG_ERROR`、`LLOG_CRITICAL`：宏接口，支持编译期裁剪。
+- `LLOG_TRACE`、`LLOG_DEBUG`、`LLOG_INFO`、`LLOG_WARN`、`LLOG_ERROR`、`LLOG_FATAL`：宏接口，支持编译期裁剪。宏与等级常量定义在只含宏的 `LLogMacros.hpp` 中（`LLog.hpp` 自动包含）；使用 `import ltool;` 时在 import 之后包含它。
 - `LLog::set_level()`：设置运行时最低输出等级。
 - `LLog::set_color_mode()`：控制默认终端 sink 的彩色输出。
 - `LLog::writef()` / `LLog::info()` / `LLog::warn()`：函数式日志入口。

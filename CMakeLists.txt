@@ -16,6 +16,7 @@ option(LTOOL_USE_JSONCPP "Enable JsonCpp integration when available" ON)
 option(LTOOL_USE_SIMDJSON "Enable simdjson integration when available" ON)
 option(LTOOL_USE_OPENSSL_SHA256 "Use OpenSSL EVP for SHA-256 when OpenSSL::Crypto is available" ON)
 option(LTOOL_USE_PORTABLE_FILE_DIALOGS "Enable portable-file-dialogs support when available" ON)
+option(LTOOL_BUILD_MODULE "Build the C++20 module 'ltool' (import ltool;); requires CMake 3.28+ and Ninja/VS generator" OFF)
 
 add_library(ltool INTERFACE)
 add_library(ltool::ltool ALIAS ltool)
@@ -98,6 +99,23 @@ if(APPLE OR CMAKE_SYSTEM_NAME MATCHES "BSD")
     endif()
 endif()
 
+# C++20 模块：ltool::module 编译 modules/ltool.cppm，使用方 `import ltool;`
+if(LTOOL_BUILD_MODULE)
+    if(CMAKE_VERSION VERSION_LESS 3.28)
+        message(FATAL_ERROR "LTOOL_BUILD_MODULE requires CMake 3.28 or later")
+    endif()
+    add_library(ltool_module)
+    add_library(ltool::module ALIAS ltool_module)
+    target_sources(ltool_module
+        PUBLIC
+            FILE_SET CXX_MODULES
+            BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/modules
+            FILES ${CMAKE_CURRENT_SOURCE_DIR}/modules/ltool.cppm
+    )
+    target_compile_features(ltool_module PUBLIC cxx_std_20)
+    target_link_libraries(ltool_module PUBLIC ltool)
+endif()
+
 install(
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ltool
@@ -112,8 +130,26 @@ install(
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-install(
-    EXPORT ltoolTargets
-    NAMESPACE ltool::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ltool
-)
+if(LTOOL_BUILD_MODULE)
+    install(
+        TARGETS ltool_module
+        EXPORT ltoolTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        FILE_SET CXX_MODULES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ltool/modules
+    )
+endif()
+
+if(LTOOL_BUILD_MODULE)
+    install(
+        EXPORT ltoolTargets
+        NAMESPACE ltool::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ltool
+        CXX_MODULES_DIRECTORY cxx-modules
+    )
+else()
+    install(
+        EXPORT ltoolTargets
+        NAMESPACE ltool::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ltool
+    )
+endif()

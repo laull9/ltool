@@ -776,6 +776,7 @@ using TaskInfo = ::LTaskInfo;               ///< 任务信息别名。
 using TaskId = ::LTaskId;                   ///< 任务 ID 别名。
 using ScheduleMode = ::LScheduleMode;       ///< 调度策略别名。
 using TaskErrorPolicy = ::LTaskErrorPolicy; ///< 错误策略别名。
+using ::make_pool_executor;                 ///< 线程池 executor 辅助函数。
 } // namespace LTool
 
 #endif // LTOOL_LSCHEDULER_INCLUDE
