@@ -18,6 +18,7 @@
 #define LTOOL_LWEB_DETAIL_ROUTER_HPP
 
 #include <cassert>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <set>
@@ -29,7 +30,8 @@
 #include <utility>
 #include <vector>
 
-#include "detail/LWeb/Traits.hpp"
+#include "../../LFile.hpp"
+#include "Traits.hpp"
 
 namespace LWeb {
 namespace detail {
@@ -86,7 +88,7 @@ void RegisterRoute(cinatra::coro_http_server& server,
         std::string key =
             std::string(cinatra::method_name(m)) + " " + full_path;
         if (!registered->insert(key).second) {
-            throw std::invalid_argument("LWeb: 路由重复注册 " + key);
+            throw std::invalid_argument("LWeb: duplicate route registration " + key);
         }
     };
     (check(Methods), ...);
@@ -327,6 +329,84 @@ public:
                     return std::invoke(method, object, req, res);
                 },
             std::forward<RouteAspects>(aspects)...);
+    }
+
+    /// 挂载静态文件目录服务（自动拦截 `..` 路径穿越并映射常见 MIME 类型）。
+    template <typename... RouteAspects>
+    void Static(std::string_view uri_prefix, std::filesystem::path root_dir,
+                RouteAspects&&... aspects) {
+        std::error_code ec;
+        auto canonical_root = std::filesystem::weakly_canonical(root_dir, ec);
+        if (ec) {
+            canonical_root = std::filesystem::absolute(root_dir, ec).lexically_normal();
+        }
+        std::string route_pattern = detail::JoinPath(uri_prefix, "(.+)");
+
+        auto serve = [canonical_root](Request& req, Response& res) {
+            std::string rel = LStringDetail::url_decode(req.matches_.str(1), false);
+            if (rel.find('\0') != std::string::npos) {
+                res.set_status_and_content(HttpStatus::bad_request, "Invalid path");
+                return;
+            }
+            for (char& ch : rel) {
+                if (ch == '\\') {
+                    ch = '/';
+                }
+            }
+            while (!rel.empty() && rel.front() == '/') {
+                rel.erase(rel.begin());
+            }
+            std::filesystem::path candidate = canonical_root / std::filesystem::path(rel);
+            std::error_code resolve_ec;
+            auto canonical_target = std::filesystem::weakly_canonical(candidate, resolve_ec);
+            if (resolve_ec) {
+                res.set_status_and_content(HttpStatus::not_found, "Not Found");
+                return;
+            }
+            // 严格前缀校验：确保目标文件严格位于 canonical_root 内，防止目录穿越
+            auto root_str = canonical_root.generic_string();
+            auto target_str = canonical_target.generic_string();
+            bool inside = (target_str == root_str) ||
+                          (target_str.size() > root_str.size() &&
+                           target_str.compare(0, root_str.size(), root_str) == 0 &&
+                           (root_str.back() == '/' || target_str[root_str.size()] == '/'));
+            if (!inside) {
+                res.set_status_and_content(HttpStatus::forbidden, "Forbidden");
+                return;
+            }
+            if (std::filesystem::is_directory(canonical_target, resolve_ec)) {
+                canonical_target /= "index.html";
+            }
+            if (!std::filesystem::is_regular_file(canonical_target, resolve_ec)) {
+                res.set_status_and_content(HttpStatus::not_found, "Not Found");
+                return;
+            }
+            auto content = LFile::read_bytes(canonical_target);
+            auto ext = canonical_target.extension().string();
+            for (char& ch : ext) {
+                if (ch >= 'A' && ch <= 'Z') {
+                    ch = static_cast<char>(ch - 'A' + 'a');
+                }
+            }
+            std::string_view mime = "application/octet-stream";
+            if (ext == ".html" || ext == ".htm") mime = "text/html; charset=utf-8";
+            else if (ext == ".css") mime = "text/css; charset=utf-8";
+            else if (ext == ".js" || ext == ".mjs") mime = "application/javascript; charset=utf-8";
+            else if (ext == ".json") mime = "application/json; charset=utf-8";
+            else if (ext == ".txt" || ext == ".md" || ext == ".log") mime = "text/plain; charset=utf-8";
+            else if (ext == ".svg") mime = "image/svg+xml";
+            else if (ext == ".png") mime = "image/png";
+            else if (ext == ".jpg" || ext == ".jpeg") mime = "image/jpeg";
+            else if (ext == ".gif") mime = "image/gif";
+            else if (ext == ".webp") mime = "image/webp";
+            else if (ext == ".ico") mime = "image/x-icon";
+            else if (ext == ".wasm") mime = "application/wasm";
+            res.add_header("Content-Type", std::string(mime));
+            res.set_status_and_content(HttpStatus::ok, std::move(content));
+        };
+
+        Map<cinatra::http_method::GET>(route_pattern, std::move(serve),
+                                       std::forward<RouteAspects>(aspects)...);
     }
 
     // ---- Controller / Module 注册 ----

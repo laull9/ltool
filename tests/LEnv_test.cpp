@@ -23,6 +23,23 @@ TEST_CASE("LEnv parses dotenv text", "[LEnv]") {
     REQUIRE(env.get("MISSING", "fallback") == "fallback");
 }
 
+TEST_CASE("LEnv handles escaped dollar signs and backslashes in double quotes", "[LEnv]") {
+    LEnv env;
+    env.parse(
+        "A=hello\n"
+        "RAW=\"C:\\\\new\"\n"
+        "ESCAPED=\"\\$A\"\n"
+        "ESCAPED_BRACE=\"\\${A}\"\n"
+        "BACKSLASH_VAR=\"\\\\$A\"\n"
+        "KEEP_RAW=\"$RAW\"\n");
+
+    REQUIRE(env.get("RAW") == "C:\\new");
+    REQUIRE(env.get("ESCAPED") == "$A");
+    REQUIRE(env.get("ESCAPED_BRACE") == "${A}");
+    REQUIRE(env.get("BACKSLASH_VAR") == "\\hello");
+    REQUIRE(env.get("KEEP_RAW") == "C:\\new");
+}
+
 TEST_CASE("LEnv applies process environment without overwriting by default", "[LEnv]") {
     const std::string key = "LTOOL_LENV_TEST_VALUE";
     LEnv::unset_env(key);

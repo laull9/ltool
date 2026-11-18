@@ -6,19 +6,24 @@
  * 可用依赖，按条件包含下列组件；缺失组件对应的能力在源码中自动降级或报错。
  *
  * 组件清单（均位于 ltool/ 目录，可单独 include）：
- * - LString     ：std::string 薄封装，文本/编码/格式化/正则/Base64/MD5/SHA-256。
- * - LLog        ：轻量级多级日志，支持颜色、来源位置、自定义 sink。
+ * - LString     ：std::string 薄封装，文本/编码/格式化/正则/Base64/MD5/SHA-256/HMAC。
+ * - LLog        ：轻量级多级日志，支持颜色、来源位置、多 sink 与轮转文件 sink。
  * - LJson       ：JSON DOM 与反射序列化（yyjson + 可选 nlohmann/jsoncpp/simdjson/rfl）。
  * - LToml       ：TOML 反射序列化（可选 rfl::toml）。
  * - LYaml       ：YAML 反射序列化（可选 rfl::yaml）。
  * - LConfig     ：JSON/TOML/YAML 统一配置读取、写入与环境变量覆盖。
  * - LEnv        ：.env 文件解析与进程环境变量辅助。
  * - LTimer      ：chrono 计时器与作用域计时器。
+ * - LDateTime   ：日历时间、ISO-8601 解析/格式化、本地/UTC 转换与时长文本工具。
  * - LScheduler  ：定时任务调度器（一次性/周期任务，可取消，需 C++20）。
  * - LRandom     ：随机数、抽样、洗牌、随机文本与 UUID。
  * - LTable      ：命令行 Unicode 表格。
- * - LPath       ：std::filesystem::path 薄封装与目录工具。
- * - LFile       ：文件内容读写、字节/文本/行、正则替换、临时文件。
+ * - LPath       ：std::filesystem::path 薄封装、** 递归 glob 与 LTempDir。
+ * - LFile       ：文件内容读写、字节/文本/行、正则替换与 LTempFile。
+ * - LResult     ：轻量级返回值错误处理 LResult<T, E> 与作用域守卫 LScopeGuard。
+ * - LCli        ：零依赖命令行参数解析器（长短选项/子命令/自动帮助）。
+ * - LProcess    ：跨平台子进程执行（stdin/stdout/stderr/超时）与进程信息。
+ * - LChannel    ：MPMC 阻塞通道 LChannel<T> 与线程安全 LRU/TTL 缓存 LLruCache<K, V>。
  * - Locked      ：互斥保护值包装（C++20 concept）。
  * - LThreadPool ：线程池（可选 BS_thread_pool）。
  * - LDialog     ：原生文件/目录/消息对话框（可选 portable-file-dialogs）。
@@ -63,6 +68,14 @@
 
 #include "LEnv.hpp"
 #include "LTimer.hpp"
+
+#if LTOOL_HAS_CPP17
+#include "LResult.hpp"
+#include "LDateTime.hpp"
+#include "LCli.hpp"
+#include "LProcess.hpp"
+#include "LChannel.hpp"
+#endif
 
 #if LTOOL_HAS_CPP20
 #include "LScheduler.hpp"

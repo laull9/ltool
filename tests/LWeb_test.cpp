@@ -828,3 +828,79 @@ TEST_CASE("LWeb 混合架构：Minimal API + Controller + Module + Slice 共存"
     REQUIRE(created.status == 201);
     REQUIRE(Get(client, "/admin").resp_body == "admin");
 }
+
+TEST_CASE("LWeb BearerAuth 校验与数值绑定范围检查", "[LWeb][security]") {
+    TestApp server;
+    REQUIRE(server.app.Port() == server.app.port());
+
+    server.app.Get(
+        "/empty-verifier", [](auto&, auto& res) { LWeb::Ok(res, "ok"); },
+        LWeb::middleware::BearerAuth{});
+    server.app.Get(
+        "/checked-bearer", [](auto&, auto& res) { LWeb::Ok(res, "ok"); },
+        LWeb::middleware::BearerAuth{
+            [](std::string_view token) { return token == "secret"; }});
+    server.app.Get("/byte", [](LWeb::Request& req, auto& res) {
+        auto v = LWeb::Query<unsigned char>(req, "v");
+        LWeb::Ok(res, std::to_string(v));
+    });
+
+    LWeb::HttpClient client{server.base};
+    auto r1 = async_simple::coro::syncAwait(
+        client.Get("/empty-verifier", {{"Authorization", "Bearer anything"}}));
+    REQUIRE(r1.status == 401);
+
+    auto r2 = async_simple::coro::syncAwait(
+        client.Get("/checked-bearer", {{"Authorization", "bearer secret"}}));
+    REQUIRE(r2.status == 200);
+
+    auto r3 = Get(client, "/byte?v=300");
+    REQUIRE(r3.status == 400);
+    auto r4 = Get(client, "/byte?v=200");
+    REQUIRE(r4.status == 200);
+    REQUIRE(r4.resp_body == "200");
+}
+
+TEST_CASE("LWeb supports Form parsing, HttpClient::SetTimeout, and Static file serving",
+          "[LWeb][static][form]") {
+    LTempDir root("lweb_static_");
+    LFile(root.path() / "hello.txt").write_text("hello static");
+    LFile(root.path() / "sub" / "page.html").write_text("<h1>hi</h1>");
+    LTempDir outside("lweb_outside_");
+    LFile(outside.path() / "secret.txt").write_text("top secret");
+
+    TestApp server;
+    server.app.Post("/form", [](LWeb::Request& req, LWeb::Response& res) {
+        auto name = LWeb::FormValue(req, "name");
+        int count = LWeb::FormValue<int>(req, "count");
+        auto body = LJson::Json::object();
+        body["name"] = name;
+        body["count"] = count;
+        LWeb::Json(res, body);
+    });
+    server.app.Static("/static", root.path().path());
+
+    LWeb::HttpClient client{server.base};
+    client.SetTimeout(std::chrono::seconds(5));
+
+    auto form_res = async_simple::coro::syncAwait(client.Post(
+        "/form", "name=Alice+Smith&count=7", cinatra::req_content_type::string));
+    REQUIRE(form_res.status == 200);
+    auto j = LJson::parse(form_res.resp_body);
+    REQUIRE(j["name"].as_string() == "Alice Smith");
+    REQUIRE(j["count"].as_int() == 7);
+
+    auto f1 = Get(client, "/static/hello.txt");
+    REQUIRE(f1.status == 200);
+    REQUIRE(f1.resp_body == "hello static");
+
+    auto f2 = Get(client, "/static/sub/page.html");
+    REQUIRE(f2.status == 200);
+    REQUIRE(f2.resp_body == "<h1>hi</h1>");
+
+    auto missing = Get(client, "/static/nope.txt");
+    REQUIRE(missing.status == 404);
+
+    auto trav = Get(client, "/static/%2e%2e/secret.txt");
+    REQUIRE((trav.status == 403 || trav.status == 404));
+}

@@ -45,14 +45,8 @@
 
 namespace LTableDetail {
 
-/// 剥除 cv 和引用后的类型。
-template<class T>
-struct remove_cvref {
-    using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
-};
-
-template<class T>
-using remove_cvref_t = typename remove_cvref<T>::type;
+using LTool::traits::remove_cvref;
+using LTool::traits::remove_cvref_t;
 
 /// 判断类型是否可直接转成文本（const char* 或 std::string）。
 template<class T>
@@ -290,8 +284,10 @@ inline std::string fold_text(const std::string& text,
 
     // 超出最大行数：保留前 max_rows-1 行，最后一行截断并追加省略号。
     lines.resize(max_rows);
-    const auto ellipsis_width = (std::max<std::size_t>)(display_width(ellipsis), 1);
-    if (width <= ellipsis_width) {
+    const auto ellipsis_width = display_width(ellipsis);
+    if (ellipsis_width == 0) {
+        lines.back() = truncate_to_width(lines.back(), width);
+    } else if (width <= ellipsis_width) {
         lines.back() = ellipsis;
     } else {
         lines.back() = truncate_to_width(lines.back(), width - ellipsis_width) + ellipsis;
@@ -673,5 +669,9 @@ inline std::ostream& operator<<(std::ostream& stream, const LTable& table) {
     table.print(stream);
     return stream;
 }
+
+namespace LTool {
+using Table = ::LTable; ///< 表格类型别名。
+} // namespace LTool
 
 #endif // LTOOL_LTABLE_INCLUDE

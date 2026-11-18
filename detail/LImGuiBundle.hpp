@@ -1,9 +1,9 @@
 /**
  * @file detail/LImGuiBundle.hpp
- * @brief LTool Dear ImGui Bundle-style helper facade.
+ * @brief LTool 的 Dear ImGui Bundle 风格辅助包装。
  *
- * Source reference: https://github.com/pthom/imgui_bundle
- * Includes the upstream header-only imspinner submodule and small LTool table/drawing helpers.
+ * 来源参考：https://github.com/pthom/imgui_bundle
+ * 包含内置的纯头文件 imspinner 子模块，以及轻量表格/绘图辅助工具。
  */
 
 #ifndef LTOOL_DETAIL_LIMGUI_BUNDLE_INCLUDE

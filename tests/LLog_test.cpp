@@ -150,6 +150,27 @@ TEST_CASE("LLOG macros still work and carry the call-site location", "[LLog]") {
     LLog::reset_sink();
 }
 
+TEST_CASE("LLog supports multiple sinks and rotating file sinks", "[LLog]") {
+    LTempDir dir("llog_sinks_");
+    const std::string log_path = (dir.path() / "app.log").string();
+
+    std::vector<std::string> mem_msgs;
+    LLog::set_level(LLog::Level::info);
+    LLog::clear_sinks();
+    LLog::add_sink([&](const LLog::Record& r) { mem_msgs.push_back(r.message); });
+    LLog::add_sink(LLog::make_rotating_file_sink(log_path, 90, 2));
+
+    for (int i = 0; i < 6; ++i) {
+        LLOG_INFO("rotating_entry_number_{}_payload_abcdef", i);
+    }
+
+    LLog::clear_sinks();
+    REQUIRE(mem_msgs.size() == 6);
+    REQUIRE(LPath::exists(log_path));
+    REQUIRE(LPath::exists(log_path + ".1"));
+    REQUIRE(LFile::read_text(log_path).find("rotating_entry_number_5") != std::string::npos);
+}
+
 // ---------------------------------------------------------------------------
 // 宏路径的编译期格式串校验
 //

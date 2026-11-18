@@ -461,16 +461,19 @@
 
 namespace LTool {
 
+/// ltool 版本号结构。
 struct Version {
-    int major;
-    int minor;
-    int patch;
+    int major; ///< 主版本号。
+    int minor; ///< 次版本号。
+    int patch; ///< 修订版本号。
 };
 
+/// 返回当前库版本号结构。
 inline constexpr Version current_version() noexcept {
     return {LTOOL_VERSION_MAJOR, LTOOL_VERSION_MINOR, LTOOL_VERSION_PATCH};
 }
 
+/// 返回当前库版本号字符串。
 inline constexpr const char* version_string() noexcept {
     return LTOOL_VERSION_STRING;
 }

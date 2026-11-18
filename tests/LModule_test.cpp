@@ -30,7 +30,9 @@ struct ServerConfig {
 } // namespace
 
 TEST_CASE("模块导出 LString 与 fmt 入口", "[LModule]") {
-    LString name = "  ltool  ";
+    LTool::String name = "  ltool  ";
+    LTool::Encoding enc = LTool::Encoding::Utf8;
+    REQUIRE(enc == LEncoding::Utf8);
     REQUIRE(name.trimmed() == "ltool");
     REQUIRE(LString::format("{}-{}", "a", 1) == "a-1");
     REQUIRE(fmt::format("[{}]", name.trimmed()) == "[ltool]"); // formatter<LString> 特化可达
@@ -87,17 +89,19 @@ TEST_CASE("模块导出 Locked、LTimer、LRandom、LTable、LEnv", "[LModule]")
     REQUIRE(n <= 6);
     REQUIRE(LRandom::shared().uuid_v4().size() == 36);
 
-    LTable table;
+    LTool::Table table;
     table.header({"k", "v"}).add_values("a", 1);
     REQUIRE(table.markdown().find("| a") != std::string::npos);
 
+    LTool::EnvOptions env_opts;
+    REQUIRE_FALSE(env_opts.overwrite);
     REQUIRE(LEnv::get_env("LTOOL_MODULE_TEST_UNSET_VAR", "fallback") == "fallback");
 }
 
 TEST_CASE("模块导出 LPath 与 LFile", "[LModule]") {
-    auto dir = LPath(std::filesystem::temp_directory_path()) / "ltool_module_test";
+    auto dir = LTool::Path(std::filesystem::temp_directory_path()) / "ltool_module_test";
     std::filesystem::create_directories(dir.path());
-    LFile file = dir / "a.txt";
+    LTool::File file = dir / "a.txt";
     file.write_text("module");
     REQUIRE(file.read_text() == "module");
     REQUIRE((dir / "a.txt") == LPath(file.path()));
@@ -146,5 +150,58 @@ TEST_CASE("模块导出 LDialog 与 LProgress 的名字", "[LModule]") {
         LProgress::Counter counter(&work);
         return LProgress::red;
     };
+    SUCCEED();
+}
+
+TEST_CASE("模块导出 LResult、LDateTime、LCli、LProcess、LChannel、LTempDir 与 LTempFile", "[LModule]") {
+    LTool::Result<int, std::string> ok = LTool::Result<int, std::string>::ok(10);
+    REQUIRE(ok.value() == 10);
+    auto err = LTool::Result<int, std::string>(LTool::err(std::string("bad")));
+    REQUIRE_FALSE(err.has_value());
+
+    int cleaned = 0;
+    {
+        auto g = LTool::make_scope_exit([&] { ++cleaned; });
+        REQUIRE(g.active());
+    }
+    REQUIRE(cleaned == 1);
+
+    auto dt = LTool::DateTime::parse_iso8601("2026-11-18T12:00:00Z");
+    REQUIRE(dt.to_iso8601() == "2026-11-18T12:00:00Z");
+
+    LTool::Cli cli("mod_demo");
+    cli.flag("flag", 'f', "标志");
+    auto parsed = cli.parse(std::vector<std::string>{"-f"});
+    REQUIRE(parsed.ok());
+    REQUIRE(parsed.flag("flag"));
+
+    REQUIRE(LTool::Process::current_pid() > 0);
+
+    LTool::Channel<int> ch(2);
+    REQUIRE(ch.try_send(42));
+    REQUIRE(ch.try_receive() == 42);
+
+    LTool::LruCache<std::string, int> cache(2);
+    cache.put("k", 7);
+    REQUIRE(cache.get("k") == 7);
+
+    std::filesystem::path tmp_dir_path;
+    {
+        LTool::TempDir td("lmod_");
+        tmp_dir_path = td.path().path();
+        REQUIRE(std::filesystem::exists(tmp_dir_path));
+    }
+    REQUIRE_FALSE(std::filesystem::exists(tmp_dir_path));
+
+    std::filesystem::path tmp_file_path;
+    {
+        LTool::TempFile tf("lmod_", ".tmp");
+        tmp_file_path = tf.path();
+        REQUIRE(std::filesystem::exists(tmp_file_path));
+    }
+    REQUIRE_FALSE(std::filesystem::exists(tmp_file_path));
+
+    auto rot_sink = LLog::make_rotating_file_sink;
+    (void)rot_sink;
     SUCCEED();
 }

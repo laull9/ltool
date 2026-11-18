@@ -20,9 +20,9 @@
 #include <utility>
 #include <variant>
 
-#include "detail/LWeb/Error.hpp"
-#include "LJson.hpp"
-#include "pkgs/cinatra/cinatra.hpp"
+#include "Error.hpp"
+#include "../../LJson.hpp"
+#include "../../pkgs/cinatra/cinatra.hpp"
 
 namespace LWeb {
 
@@ -166,7 +166,10 @@ struct LWebJsonCodec {
     /// 结构与目标类型不匹配 -> BindingError(400)。
     template <typename T>
     static T Deserialize(std::string_view text) {
-        if constexpr (std::same_as<T, LJson::Json>) {
+        using D = std::remove_cvref_t<T>;
+        static_assert(!std::same_as<D, LJson::JsonRef>,
+                      "LWeb: cannot deserialize into detached JsonRef");
+        if constexpr (std::derived_from<D, LJson::Json>) {
             try {
                 return LJson::Json::parse(std::string(text));
             }

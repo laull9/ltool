@@ -41,16 +41,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #if LTOOL_PLATFORM_WINDOWS
 #include <io.h>
@@ -337,7 +341,7 @@ inline bool is_enabled(Level runtime_level, Level severity) noexcept {
 /// 把 time_t 转换为线程安全的本地时间结构。
 inline std::tm local_time(std::time_t value) {
     std::tm out {};
-#if defined(_WIN32)
+#if LTOOL_PLATFORM_WINDOWS
     localtime_s(&out, &value);
 #else
     localtime_r(&value, &out);
@@ -401,7 +405,7 @@ private:
     Level min_level_ = Level::info; ///< 当前最低输出等级。
     bool with_location_ = false;    ///< 是否在输出中包含来源位置。
     ColorMode color_mode_ = ColorMode::automatic; ///< 颜色策略。
-    SinkType sink_;                 ///< 自定义输出回调；为空时使用默认控制台输出。
+    std::vector<SinkType> sinks_;   ///< 自定义输出回调列表；为空时使用默认控制台输出。
 
     /// 默认输出：warn 及以上写 stderr，其余写 stdout。
     static void default_sink(const Record& item, bool with_location, ColorMode colors) {
@@ -457,16 +461,33 @@ public:
         return color_mode_;
     }
 
-    /// 设置自定义输出 sink；为空时回退到默认控制台输出。
+    /// 设置自定义输出 sink（替换已有 sink）；为空时回退到默认控制台输出。
     void set_sink(SinkType sink) {
         std::lock_guard<std::mutex> lock(mutex_);
-        sink_ = std::move(sink);
+        sinks_.clear();
+        if (sink) {
+            sinks_.push_back(std::move(sink));
+        }
+    }
+
+    /// 追加一个自定义输出 sink（支持同时输出到多个目标）。
+    void add_sink(SinkType sink) {
+        if (!sink) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        sinks_.push_back(std::move(sink));
+    }
+
+    /// 清空全部自定义 sink，恢复默认控制台输出。
+    void clear_sinks() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sinks_.clear();
     }
 
     /// 清空自定义 sink，恢复默认控制台输出。
     void reset_sink() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        sink_ = nullptr;
+        clear_sinks();
     }
 
     /// 判断指定等级当前是否开启。
@@ -478,7 +499,7 @@ public:
     /// 写一条日志记录；未开启或设置禁用时直接返回。
     void write(Level severity, const std::string& message,
                SourceLocation location = SourceLocation::current()) {
-        SinkType sink;
+        std::vector<SinkType> sinks;
         bool with_location = false;
         ColorMode colors = ColorMode::automatic;
 
@@ -487,7 +508,7 @@ public:
             if (!is_enabled(min_level_, severity)) {
                 return;
             }
-            sink = sink_;
+            sinks = sinks_;
             with_location = with_location_;
             colors = color_mode_;
         }
@@ -499,8 +520,12 @@ public:
         item.message = message;
         item.location = location;
 
-        if (sink) {
-            sink(item);
+        if (!sinks.empty()) {
+            for (const auto& s : sinks) {
+                if (s) {
+                    s(item);
+                }
+            }
         } else {
             std::lock_guard<std::mutex> lock(mutex_);
             default_sink(item, with_location, colors);
@@ -510,6 +535,9 @@ public:
     /// 写一条 C 字符串日志记录。
     void write(Level severity, const char* message,
                SourceLocation location = SourceLocation::current()) {
+        if (!enabled(severity)) {
+            return;
+        }
         write(severity, std::string(message ? message : ""), location);
     }
 
@@ -582,14 +610,126 @@ inline void set_color_enabled(bool value) {
     default_logger().set_color_enabled(value);
 }
 
-/// 设置默认日志器的自定义 sink。
+/// 设置默认日志器的自定义 sink（替换已有 sink）。
 inline void set_sink(SinkType sink) {
     default_logger().set_sink(std::move(sink));
+}
+
+/// 为默认日志器追加一个自定义 sink（支持多路输出）。
+inline void add_sink(SinkType sink) {
+    default_logger().add_sink(std::move(sink));
+}
+
+/// 清空默认日志器的全部自定义 sink，恢复默认控制台输出。
+inline void clear_sinks() {
+    default_logger().clear_sinks();
 }
 
 /// 清空默认日志器的自定义 sink。
 inline void reset_sink() {
     default_logger().reset_sink();
+}
+
+/// 构造线程安全的控制台输出 sink，便于与 add_sink() 组合实现终端 + 文件双写。
+inline SinkType make_console_sink(bool with_location = false,
+                                  ColorMode colors = ColorMode::automatic) {
+    auto mtx = std::make_shared<std::mutex>();
+    return [mtx, with_location, colors](const Record& item) {
+        bool to_error = static_cast<int>(item.severity) >= static_cast<int>(Level::warn);
+        std::FILE* file = to_error ? stderr : stdout;
+        auto text = format_record(item, with_location, should_use_color(colors, file));
+        std::lock_guard<std::mutex> lock(*mtx);
+        auto& stream = to_error ? std::cerr : std::cout;
+        stream << text << '\n';
+    };
+}
+
+/// 构造线程安全的单文件输出 sink（默认追加写入）。
+inline SinkType make_file_sink(const std::string& path,
+                               bool with_location = false,
+                               bool append = true) {
+    struct State {
+        std::mutex mutex;
+        std::ofstream file;
+    };
+    auto state = std::make_shared<State>();
+    std::ios::openmode mode = std::ios::out | (append ? std::ios::app : std::ios::trunc);
+    state->file.open(path, mode);
+    if (!state->file.is_open()) {
+        throw std::runtime_error("LLog: cannot open log file: " + path);
+    }
+    return [state, with_location](const Record& item) {
+        auto text = format_record(item, with_location, false);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->file << text << '\n';
+        if (static_cast<int>(item.severity) >= static_cast<int>(Level::warn)) {
+            state->file.flush();
+        }
+    };
+}
+
+/// 构造按文件大小自动轮转的线程安全日志 sink（生成 path, path.1, ..., path.N）。
+inline SinkType make_rotating_file_sink(const std::string& path,
+                                        std::size_t max_bytes,
+                                        std::size_t max_files = 3,
+                                        bool with_location = false) {
+    if (max_bytes == 0) {
+        throw std::invalid_argument("LLog: max_bytes must be positive");
+    }
+    struct State {
+        std::mutex mutex;
+        std::string base_path;
+        std::size_t max_bytes = 0;
+        std::size_t max_files = 0;
+        std::size_t current_bytes = 0;
+        std::ofstream file;
+
+        void open_active() {
+            file.open(base_path, std::ios::out | std::ios::app);
+            if (!file.is_open()) {
+                throw std::runtime_error("LLog: cannot open rotating log file: " + base_path);
+            }
+            file.seekp(0, std::ios::end);
+            auto pos = file.tellp();
+            current_bytes = (pos > 0) ? static_cast<std::size_t>(pos) : 0;
+        }
+
+        void rotate() {
+            file.close();
+            if (max_files == 0) {
+                std::remove(base_path.c_str());
+                file.open(base_path, std::ios::out | std::ios::trunc);
+                current_bytes = 0;
+                return;
+            }
+            std::string oldest = base_path + "." + std::to_string(max_files);
+            std::remove(oldest.c_str());
+            for (std::size_t i = max_files; i > 1; --i) {
+                std::string src = base_path + "." + std::to_string(i - 1);
+                std::string dst = base_path + "." + std::to_string(i);
+                std::rename(src.c_str(), dst.c_str());
+            }
+            std::rename(base_path.c_str(), (base_path + ".1").c_str());
+            file.open(base_path, std::ios::out | std::ios::trunc);
+            current_bytes = 0;
+        }
+    };
+    auto state = std::make_shared<State>();
+    state->base_path = path;
+    state->max_bytes = max_bytes;
+    state->max_files = max_files;
+    state->open_active();
+    return [state, with_location](const Record& item) {
+        auto text = format_record(item, with_location, false);
+        const std::size_t write_size = text.size() + 1;
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->current_bytes > 0 && state->current_bytes + write_size > state->max_bytes) {
+            state->rotate();
+        }
+        state->file << text << '\n';
+        state->file.flush();
+        state->current_bytes += write_size;
+    };
 }
 
 /// 判断默认日志器是否开启指定等级。

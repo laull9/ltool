@@ -1,5 +1,3 @@
-#pragma once
-
 /**
  * @file Locked.hpp
  * @brief 互斥保护值包装，提供读锁/写锁安全的成员访问。
@@ -20,6 +18,11 @@
  * if (auto guard = xs.rlock()) { fmt::println("{}", guard->size()); }
  * @endcode
  */
+
+#ifndef LTOOL_LOCKED_INCLUDE
+#define LTOOL_LOCKED_INCLUDE
+
+#include "detail/LToolConfig.hpp"
 
 #include <mutex>
 #include <shared_mutex>
@@ -95,7 +98,7 @@ private:
         using Ptr = std::conditional_t<Const, const T*, T*>;
 
         Ptr ptr_;    ///< 指向被保护数据的指针。
-#if defined(_MSC_VER)
+#if LTOOL_COMPILER_MSVC
         [[msvc::no_unique_address]] Lock lock_; ///< 持有的锁。
 #else
         [[no_unique_address]] Lock lock_; ///< 持有的锁。
@@ -145,26 +148,24 @@ public:
     using ReadGuard  = Guard<true,  LockedDetail::ReadLock<Mutex>>;  ///< 读锁守卫。
 
     /// 获取写锁守卫；写守卫可修改被保护数据。
-    WriteGuard wlock() {
+    [[nodiscard]] WriteGuard wlock() {
         return WriteGuard(&data_, LockedDetail::WriteLock<Mutex>(mutex_));
     }
 
     /// 获取读锁守卫；读守卫只能读取被保护数据。
-    ReadGuard rlock() const {
+    [[nodiscard]] ReadGuard rlock() const {
         return ReadGuard(&data_, LockedDetail::ReadLock<Mutex>(mutex_));
     }
 
-    /// 在写锁内执行回调 f(data)；回调结果按值返回。
+    /// 在写锁内执行回调 f(data)；回调结果按值返回，防止引用逃出锁作用域。
     template<class F>
-    // Callback results are returned by value so references cannot outlive the lock.
     auto with_write(F&& f) {
         auto lock = LockedDetail::WriteLock<Mutex>(mutex_);
         return std::invoke(std::forward<F>(f), data_);
     }
 
-    /// 在读锁内执行回调 f(data)；回调结果按值返回。
+    /// 在读锁内执行回调 f(data)；回调结果按值返回，防止引用逃出锁作用域。
     template<class F>
-    // Callback results are returned by value so references cannot outlive the lock.
     auto with_read(F&& f) const {
         auto lock = LockedDetail::ReadLock<Mutex>(mutex_);
         return std::invoke(std::forward<F>(f), std::as_const(data_));
@@ -183,7 +184,7 @@ public:
     }
 
     /// 在锁内复制返回被保护数据的副本；要求 T 可复制构造。
-    T copy() const requires std::copy_constructible<T> {
+    [[nodiscard]] T copy() const requires std::copy_constructible<T> {
         return with_read([](const T& data) {
             return data;
         });
@@ -216,7 +217,7 @@ public:
             } else if constexpr (std::is_copy_assignable_v<T>) {
                 data_ = tmp;
             } else {
-                rebuild_noexcept_([&tmp](void* where) {
+                rebuild_noexcept([&tmp](void* where) {
                     if constexpr (std::move_constructible<T>) {
                         ::new (where) T(std::move(tmp));
                     } else {
@@ -226,7 +227,7 @@ public:
             }
         } else {
             auto lock = LockedDetail::WriteLock<Mutex>(mutex_);
-            rebuild_noexcept_([&](void* where) {
+            rebuild_noexcept([&](void* where) {
                 ::new (where) T(std::forward<Args>(args)...);
             });
         }
@@ -235,8 +236,10 @@ public:
 private:
     /// 销毁 data_ 并用 construct(where) 原地重建；重建失败时 std::terminate。
     template<class Construct>
-    void rebuild_noexcept_(Construct&& construct) noexcept {
+    void rebuild_noexcept(Construct&& construct) noexcept {
         data_.~T();
         std::forward<Construct>(construct)(static_cast<void*>(std::addressof(data_)));
     }
 };
+
+#endif // LTOOL_LOCKED_INCLUDE

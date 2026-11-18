@@ -454,3 +454,42 @@ TEST_CASE("LString replace_all safely accepts views into itself", "[LString]") {
     replacement.replace_all("a", replacement.view());
     REQUIRE(replacement == "abababa");
 }
+
+TEST_CASE("LString from_encoding Ascii non-strict sanitizes high bytes", "[LString]") {
+    auto cleaned = LString::from_encoding("\x80" "abc\xff", LEncoding::Ascii, false);
+    REQUIRE(cleaned == "?abc?");
+    REQUIRE(cleaned.valid_utf8());
+}
+
+TEST_CASE("LString supports hex, base64url, url, hmac_sha256, and utf8 codepoint utilities", "[LString]") {
+    // Hex 编解码
+    REQUIRE(LString("\x00\x0f\xab\xff", 4).hex_encoded() == "000fabff");
+    REQUIRE(LString("\x00\x0f\xab\xff", 4).hex_encoded(true) == "000FABFF");
+    REQUIRE(LString::hex_decode("0x000fabff") == LString("\x00\x0f\xab\xff", 4));
+    REQUIRE_THROWS(LString::hex_decode("abc", true));
+
+    // Base64URL 编解码（无填充、-/ _ 替换）
+    LString raw("\xfb\xff\xef", 3);
+    REQUIRE(raw.base64url_encoded() == "-__v");
+    REQUIRE(LString("-__v").base64url_decoded() == raw);
+    REQUIRE(LString("hello").base64url_encoded() == "aGVsbG8");
+    REQUIRE(LString::base64url_decode("aGVsbG8") == "hello");
+
+    // URL 编解码
+    REQUIRE(LString("a b&c=1+2").url_encoded() == "a%20b%26c%3D1%2B2");
+    REQUIRE(LString("a b").url_encoded(true) == "a+b");
+    REQUIRE(LString("a+b%20c%26d").url_decoded() == "a b c&d");
+    REQUIRE(LString("a+b%20c").url_decoded(false) == "a+b c");
+
+    // RFC 4231 Test Case 2 for HMAC-SHA256
+    REQUIRE(LString("what do ya want for nothing?").hmac_sha256("Jefe") ==
+            "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
+
+    // UTF-8 码点统计与安全截断
+    LString mixed("Hi你好🎉");
+    REQUIRE(mixed.utf8_length() == 5);
+    REQUIRE(mixed.utf8_codepoints() == std::vector<std::uint32_t>{'H', 'i', 0x4F60, 0x597D, 0x1F389});
+    REQUIRE(mixed.utf8_truncated(3) == "Hi你");
+    REQUIRE(mixed.utf8_truncated(4, "...") == "H...");
+    REQUIRE(mixed.utf8_truncated(5) == "Hi你好🎉");
+}

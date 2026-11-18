@@ -142,37 +142,42 @@ public:
         return std::chrono::duration_cast<Duration>(elapsed());
     }
 
+    /// 返回累计纳秒数。
     long long ns() const {
         return elapsed_as<std::chrono::nanoseconds>().count();
     }
 
+    /// 返回累计微秒数。
     long long us() const {
         return elapsed_as<std::chrono::microseconds>().count();
     }
 
+    /// 返回累计毫秒数。
     long long ms() const {
         return elapsed_as<std::chrono::milliseconds>().count();
     }
 
+    /// 返回累计秒数（浮点）。
     double seconds() const {
         return std::chrono::duration<double>(elapsed()).count();
     }
 
+    /// 返回累计毫秒数（浮点）。
     double milliseconds() const {
         return std::chrono::duration<double, std::milli>(elapsed()).count();
     }
 
+    /// 返回累计微秒数（浮点）。
     double microseconds() const {
         return std::chrono::duration<double, std::micro>(elapsed()).count();
     }
 
+    /// 返回累计纳秒数（浮点）。
     double nanoseconds() const {
         return std::chrono::duration<double, std::nano>(elapsed()).count();
     }
 
-    /**
-     * @brief 执行函数并返回耗时；不接管函数返回值。
-     */
+    /// 执行函数并返回耗时；不接管函数返回值。
     template<class F LTOOL_ENABLE_IF(LTool::traits::is_invocable<F>::value)>
         LTOOL_REQUIRES(LTool::concepts::InvocableWith<F>)
     static duration measure(F&& fn) {
@@ -181,42 +186,46 @@ public:
         return timer.elapsed();
     }
 
+    /// 执行函数并返回毫秒耗时（浮点）；不接管函数返回值。
     template<class F LTOOL_ENABLE_IF(LTool::traits::is_invocable<F>::value)>
         LTOOL_REQUIRES(LTool::concepts::InvocableWith<F>)
     static double measure_ms(F&& fn) {
         return std::chrono::duration<double, std::milli>(measure(std::forward<F>(fn))).count();
     }
 
+    /// 休眠指定时长。
     template<class Rep, class Period>
     static void sleep_for(const std::chrono::duration<Rep, Period>& value) {
         std::this_thread::sleep_for(value);
     }
 
 private:
-    time_point start_;
-    time_point lap_;
-    duration elapsed_;
-    bool running_;
+    time_point start_;  ///< 本轮开始计时的时间点。
+    time_point lap_;    ///< 上次 lap/reset/resume 的时间点。
+    duration elapsed_;  ///< 之前已暂停累计的耗时。
+    bool running_;      ///< 当前是否处于运行状态。
 };
 
-/**
- * @brief 作用域计时器，析构时把 LTimer 传给回调。
- */
+/// 作用域计时器，析构时把 LTimer 传给回调。
 class LScopeTimer {
 public:
-    using callback_type = std::function<void(const LTimer&)>;
+    using callback_type = std::function<void(const LTimer&)>; ///< 析构回调类型。
 
+    /// 构造作用域计时器并立即开始计时。
     explicit LScopeTimer(callback_type callback)
         : timer_(), callback_(std::move(callback)), active_(true) {}
 
+    /// 禁止复制。
     LScopeTimer(const LScopeTimer&) = delete;
     LScopeTimer& operator=(const LScopeTimer&) = delete;
 
+    /// 移动构造：接管计时与回调，源对象置为非激活。
     LScopeTimer(LScopeTimer&& other) noexcept
         : timer_(other.timer_), callback_(std::move(other.callback_)), active_(other.active_) {
         other.active_ = false;
     }
 
+    /// 移动赋值：先安全结束当前计时，再接管源对象。
     LScopeTimer& operator=(LScopeTimer&& other) noexcept {
         if (this != &other) {
             finish_noexcept();
@@ -228,18 +237,22 @@ public:
         return *this;
     }
 
+    /// 析构时若仍激活则触发回调（吞掉异常）。
     ~LScopeTimer() noexcept {
         finish_noexcept();
     }
 
+    /// 返回内部计时器只读引用。
     const LTimer& timer() const noexcept {
         return timer_;
     }
 
+    /// 取消析构时的回调触发。
     void dismiss() noexcept {
         active_ = false;
     }
 
+    /// 提前触发回调并置为非激活。
     void finish() {
         if (active_) {
             active_ = false;
@@ -250,6 +263,7 @@ public:
     }
 
 private:
+    /// 在 noexcept 上下文中调用 finish()，吞掉异常。
     void finish_noexcept() noexcept {
         try {
             finish();
@@ -257,9 +271,9 @@ private:
         }
     }
 
-    LTimer timer_;
-    callback_type callback_;
-    bool active_;
+    LTimer timer_;           ///< 内部计时器实例。
+    callback_type callback_; ///< 结束时触发的回调。
+    bool active_;            ///< 是否尚未触发或取消。
 };
 
 namespace LTool {

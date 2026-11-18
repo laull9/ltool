@@ -22,8 +22,8 @@
  * @endcode
  */
 
-#ifndef LRANGE_INCLUDE
-#define LRANGE_INCLUDE
+#ifndef LTOOL_LRANGE_INCLUDE
+#define LTOOL_LRANGE_INCLUDE
 
 #include "detail/LToolConfig.hpp"
 
@@ -94,7 +94,7 @@ std::map<Key, Value> to_map(Range&& range);
 template<class Key, class Value, class Range>
 std::unordered_map<Key, Value> to_unordered_map(Range&& range);
 
-namespace Detail {
+namespace detail {
 
 /// 范围迭代器的哨兵类型（标记结束）。
 template<class T>
@@ -304,15 +304,13 @@ struct ToUnorderedMapClosure {
     }
 };
 
-} // namespace Detail
+} // namespace detail
 
 /**
- * @brief Owns a standard container while also modeling a range-v3 view.
+ * @brief 持有标准容器并同时建模为 range-v3 视图的包装类型。
  *
- * range-v3 intentionally rejects piping temporary containers into lazy views,
- * because saving the view could otherwise dangle. This wrapper gives ltool APIs
- * a way to return owned, vector-like results that are safe to pipe as
- * temporaries: the view stores the container by value.
+ * range-v3 有意拒绝把临时容器直接管道接入惰性视图，以免保存视图后发生悬空引用。
+ * 本包装允许 ltool 接口按值返回拥有所有权的类容器结果，同时安全支持管道组合。
  */
 template<class Container>
 class ContainerRange : public ranges::view_base {
@@ -506,14 +504,14 @@ inline constexpr auto action_unique = ranges::actions::unique;
 template<class Stop>
 auto range(Stop stop) {
     using value_type = std::decay_t<Stop>;
-    return Detail::RangeView<value_type>(value_type {}, static_cast<value_type>(stop), value_type {1});
+    return detail::RangeView<value_type>(value_type {}, static_cast<value_type>(stop), value_type {1});
 }
 
 /// 构造 [start, stop) 的步进范围（步长 1）。
 template<class Start, class Stop>
 auto range(Start start, Stop stop) {
     using value_type = std::common_type_t<std::decay_t<Start>, std::decay_t<Stop>>;
-    return Detail::RangeView<value_type>(
+    return detail::RangeView<value_type>(
         static_cast<value_type>(start),
         static_cast<value_type>(stop),
         value_type {1});
@@ -528,7 +526,7 @@ auto range(Start start, Stop stop, Step step) {
             throw std::invalid_argument("LRange::range negative step requires a signed value type");
         }
     }
-    return Detail::RangeView<value_type>(
+    return detail::RangeView<value_type>(
         static_cast<value_type>(start),
         static_cast<value_type>(stop),
         static_cast<value_type>(step));
@@ -549,7 +547,7 @@ Container to(Range&& range) {
 /// 返回可管道使用的 to<Container>() 闭包。
 template<class Container>
 auto to() {
-    return Detail::ToClosure<Container> {};
+    return detail::ToClosure<Container> {};
 }
 
 /// 把 range 收集进 std::vector<T>。
@@ -561,7 +559,7 @@ std::vector<T> to_vector(Range&& range) {
 /// 返回可管道使用的 to_vector<T>() 闭包。
 template<class T>
 auto to_vector() {
-    return Detail::ToVectorClosure<T> {};
+    return detail::ToVectorClosure<T> {};
 }
 
 /// 把 range 收集进 std::vector（元素类型自动推断）。
@@ -573,7 +571,7 @@ auto to_vector(Range&& range) {
 
 /// 返回可管道使用的 to_vector() 闭包（元素类型自动推断）。
 inline auto to_vector() {
-    return Detail::ToVectorClosure<void> {};
+    return detail::ToVectorClosure<void> {};
 }
 
 /// 把 range 收集进 std::set<T>。
@@ -585,7 +583,7 @@ std::set<T> to_set(Range&& range) {
 /// 返回可管道使用的 to_set<T>() 闭包。
 template<class T>
 auto to_set() {
-    return Detail::ToSetClosure<T> {};
+    return detail::ToSetClosure<T> {};
 }
 
 /// 把 range 收集进 std::set（元素类型自动推断）。
@@ -597,7 +595,7 @@ auto to_set(Range&& range) {
 
 /// 返回可管道使用的 to_set() 闭包（元素类型自动推断）。
 inline auto to_set() {
-    return Detail::ToSetClosure<void> {};
+    return detail::ToSetClosure<void> {};
 }
 
 /// 把 range 收集进 std::unordered_set<T>。
@@ -609,7 +607,7 @@ std::unordered_set<T> to_unordered_set(Range&& range) {
 /// 返回可管道使用的 to_unordered_set<T>() 闭包。
 template<class T>
 auto to_unordered_set() {
-    return Detail::ToUnorderedSetClosure<T> {};
+    return detail::ToUnorderedSetClosure<T> {};
 }
 
 /// 把 range 收集进 std::unordered_set（元素类型自动推断）。
@@ -621,7 +619,7 @@ auto to_unordered_set(Range&& range) {
 
 /// 返回可管道使用的 to_unordered_set() 闭包（元素类型自动推断）。
 inline auto to_unordered_set() {
-    return Detail::ToUnorderedSetClosure<void> {};
+    return detail::ToUnorderedSetClosure<void> {};
 }
 
 /// 把 pair range 收集进 std::map<Key, Value>。
@@ -633,7 +631,7 @@ std::map<Key, Value> to_map(Range&& range) {
 /// 返回可管道使用的 to_map<Key, Value>() 闭包。
 template<class Key, class Value>
 auto to_map() {
-    return Detail::ToMapClosure<Key, Value> {};
+    return detail::ToMapClosure<Key, Value> {};
 }
 
 /// 把 pair range 收集进 std::unordered_map<Key, Value>。
@@ -645,7 +643,7 @@ std::unordered_map<Key, Value> to_unordered_map(Range&& range) {
 /// 返回可管道使用的 to_unordered_map<Key, Value>() 闭包。
 template<class Key, class Value>
 auto to_unordered_map() {
-    return Detail::ToUnorderedMapClosure<Key, Value> {};
+    return detail::ToUnorderedMapClosure<Key, Value> {};
 }
 
 /// 把 range 收集为 vector（collect 是 to_vector 的语义化别名）。
@@ -656,7 +654,7 @@ auto collect(Range&& range) {
 
 /// 返回可管道使用的 collect() 闭包。
 inline auto collect() {
-    return Detail::ToVectorClosure<void> {};
+    return detail::ToVectorClosure<void> {};
 }
 
 /// 给 range 的每个元素附加从 start 开始的序号，产出 (index, value) 对。
@@ -808,4 +806,4 @@ std::string join_strings(Range&& range, std::string_view separator = {}) {
 
 } // namespace LRange
 
-#endif // LRANGE_INCLUDE
+#endif // LTOOL_LRANGE_INCLUDE

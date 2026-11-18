@@ -59,7 +59,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(_WIN32)
+#if LTOOL_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif // !WIN32_LEAN_AND_MEAN
@@ -67,17 +67,19 @@
 #define NOMINMAX
 #endif // !NOMINMAX
 #include <windows.h>
-#elif defined(__linux__) && LTOOL_HAS_INCLUDE(<sys/random.h>)
+#elif LTOOL_PLATFORM_LINUX && LTOOL_HAS_INCLUDE(<sys/random.h>)
 #include <sys/random.h>
 #include <unistd.h>
-#endif // defined(_WIN32)
+#endif // LTOOL_PLATFORM_WINDOWS
 
 namespace LRandomDetail {
 
+/// 构造空区间异常。
 inline std::runtime_error empty_range_error(const char* action) {
     return std::runtime_error(std::string("LRandom cannot ") + action + " from an empty range");
 }
 
+/// 校验上下界有序（max_value >= min_value）。
 template<class T>
 inline void require_ordered_range(T min_value, T max_value, const char* name) {
     if (max_value < min_value) {
@@ -85,16 +87,19 @@ inline void require_ordered_range(T min_value, T max_value, const char* name) {
     }
 }
 
+/// 校验概率值处于 [0, 1] 区间。
 inline void require_probability(double value) {
     if (value < 0.0 || value > 1.0) {
         throw std::invalid_argument("LRandom probability must be in [0, 1]");
     }
 }
 
+/// 混合两路 64 位种子熵。
 inline std::uint64_t mix_seed(std::uint64_t seed, std::uint64_t value) {
     return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
 }
 
+/// 返回当前 Unix 毫秒时间戳。
 inline std::uint64_t now_ms() {
     const auto now = std::chrono::system_clock::now().time_since_epoch();
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
@@ -154,8 +159,8 @@ inline void system_random_fill(void* data, std::size_t size) {
         return;
     }
 
-#if defined(_WIN32)
-    typedef LONG(WINAPI * BCryptGenRandomFn)(void*, unsigned char*, unsigned long, unsigned long);
+#if LTOOL_PLATFORM_WINDOWS
+    using BCryptGenRandomFn = LONG(WINAPI*)(void*, unsigned char*, unsigned long, unsigned long);
     static HMODULE module = LoadLibraryA("bcrypt.dll");
     static BCryptGenRandomFn bcrypt_gen_random =
         module ? reinterpret_cast<BCryptGenRandomFn>(GetProcAddress(module, "BCryptGenRandom"))
@@ -178,10 +183,10 @@ inline void system_random_fill(void* data, std::size_t size) {
         }
         done += static_cast<std::size_t>(chunk);
     }
-#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || \
+#elif LTOOL_PLATFORM_APPLE || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || \
     defined(__DragonFly__)
     arc4random_buf(data, size);
-#elif defined(__linux__) && LTOOL_HAS_INCLUDE(<sys/random.h>)
+#elif LTOOL_PLATFORM_LINUX && LTOOL_HAS_INCLUDE(<sys/random.h>)
     auto* out = static_cast<unsigned char*>(data);
     std::size_t done = 0;
     while (done < size) {
@@ -199,7 +204,7 @@ inline void system_random_fill(void* data, std::size_t size) {
         }
         throw std::runtime_error("LRandom getrandom failed");
     }
-#elif !defined(_WIN32)
+#elif !LTOOL_PLATFORM_WINDOWS
     urandom_fill(data, size);
 #endif
 }

@@ -1,14 +1,13 @@
 /**
  * @file detail/LHelloImGui.hpp
- * @brief LTool header-only HelloImGui-compatible facade.
+ * @brief LTool 纯头文件 HelloImGui 兼容包装。
  *
- * Source reference: https://github.com/pthom/hello_imgui
- * Imported reference commit: e24530d0591a346f7869a007ad4b17d995cd01c7
+ * 来源参考：https://github.com/pthom/hello_imgui
+ * 参考导入提交：e24530d0591a346f7869a007ad4b17d995cd01c7
  *
- * This is a header-only adaptation of the public HelloImGui API. It does not
- * vendor Dear ImGui or native backends. Backends are enabled when the host
- * project provides Dear ImGui backend headers/libraries, or through
- * RunnerParams.externalBackendCallbacks.
+ * 本文件是对 HelloImGui 公开 API 的纯头文件适配，不内置 Dear ImGui 或原生
+ * backend。宿主工程提供 Dear ImGui backend 头文件/库，或通过
+ * RunnerParams.externalBackendCallbacks 接入时启用对应后端。
  */
 
 #ifndef LTOOL_DETAIL_LHELLO_IMGUI_INCLUDE
@@ -89,7 +88,7 @@
 #endif
 #endif
 
-#if defined(__APPLE__) && LTOOL_HAS_INCLUDE(<OpenGL/gl3.h>)
+#if LTOOL_PLATFORM_APPLE && LTOOL_HAS_INCLUDE(<OpenGL/gl3.h>)
 #ifndef GL_SILENCE_DEPRECATION
 #define GL_SILENCE_DEPRECATION
 #endif
@@ -841,13 +840,13 @@ inline bool FontFileExists(const std::string& path) {
 
 inline std::vector<std::string> DefaultLatinFontPaths() {
     std::vector<std::string> paths;
-#if defined(_WIN32)
+#if LTOOL_PLATFORM_WINDOWS
     paths = {
         "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/arial.ttf",
         "C:/Windows/Fonts/tahoma.ttf"
     };
-#elif defined(__APPLE__)
+#elif LTOOL_PLATFORM_APPLE
     paths = {
         "/System/Library/Fonts/SFNS.ttf",
         "/System/Library/Fonts/SFNSDisplay.ttf",
@@ -869,7 +868,7 @@ inline std::vector<std::string> DefaultLatinFontPaths() {
 
 inline std::vector<std::string> DefaultChineseFontPaths() {
     std::vector<std::string> paths;
-#if defined(_WIN32)
+#if LTOOL_PLATFORM_WINDOWS
     paths = {
         "C:/Windows/Fonts/msyh.ttc",
         "C:/Windows/Fonts/msyh.ttf",
@@ -878,7 +877,7 @@ inline std::vector<std::string> DefaultChineseFontPaths() {
         "C:/Windows/Fonts/Deng.ttf",
         "C:/Windows/Fonts/msjhl.ttc"
     };
-#elif defined(__APPLE__)
+#elif LTOOL_PLATFORM_APPLE
     paths = {
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         "/System/Library/Fonts/PingFang.ttc",
@@ -1089,7 +1088,7 @@ inline const char* glsl_version(const RunnerParams& params) {
         version = "#" + *params.rendererBackendOptions.openGlOptions.GlslVersion;
         return version.c_str();
     }
-#if defined(__APPLE__)
+#if LTOOL_PLATFORM_APPLE
     return "#version 150";
 #else
     return "#version 130";
@@ -1250,7 +1249,7 @@ inline BackendRuntime make_glfw_opengl3_backend(RunnerParams& params) {
         throw std::runtime_error("HelloImGui failed to initialize GLFW");
     }
     const auto& geom = params.appWindowParams.windowGeometry;
-#if defined(__APPLE__)
+#if LTOOL_PLATFORM_APPLE
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);

@@ -328,6 +328,12 @@ TEST_CASE("JsonRef writes through to the owning document", "[LJson][semantics]")
                   "auto 推导出 JsonRef，表明它是引用");
     x = 99;
     REQUIRE(root["x"] == 99);
+    REQUIRE(x == 99);
+    REQUIRE(x.dump() == "99");
+
+    LJson::Json empty_json;
+    REQUIRE(empty_json.dump() == "null");
+    REQUIRE(empty_json.to_string() == "null");
 
     // 复制 JsonRef 得到指向同一节点的引用。
     auto x2 = x;

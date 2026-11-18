@@ -6,14 +6,14 @@
  * 主要接口：
  * - message()  ：弹出提示、警告、错误等模态消息框。
  * - notify()   ：系统通知气泡。
- * - open_file()/save_file()  ：文件选择框。
- * - open_folder()             ：目录选择框。
+ * - open_file()/open_single_file()/save_file() ：文件选择框。
+ * - select_folder()                            ：目录选择框。
  *
  * 常用示例：
  * @code
  * LDialog::message("提示", "文件已保存");
- * auto path = LDialog::open_file("选择文件", ".");
- * if (path) { LLOG_INFO("selected {}", *path); }
+ * auto path = LDialog::open_single_file("选择文件", ".");
+ * if (!path.empty()) { LLOG_INFO("selected {}", path); }
  * @endcode
  */
 

@@ -67,10 +67,9 @@ namespace LYaml {
 class Yaml;
 } // namespace LYaml
 
-// Declare the formatter before Yaml's constrained conversion constructors.
-// fmt::is_formattable<LYaml::Yaml, char> may otherwise instantiate the primary
-// formatter first, which makes the specialization at the end of this header
-// ill-formed on Clang/clang-cl.
+// 在 Yaml 的受约束转换构造函数之前前置声明 formatter；
+// 否则 fmt::is_formattable<LYaml::Yaml, char> 可能先实例化主模板，导致 Clang/clang-cl
+// 下文件末尾的特化出现编译错误。
 template<>
 struct fmt::formatter<LYaml::Yaml> : fmt::formatter<fmt::string_view> {
     template<class FormatContext>
@@ -79,9 +78,10 @@ struct fmt::formatter<LYaml::Yaml> : fmt::formatter<fmt::string_view> {
 
 namespace LYaml {
 
+/// 当前可用的 YAML 后端。
 enum class Backend {
-    none,
-    rfl_yaml
+    none,    ///< 无反射后端。
+    rfl_yaml ///< reflect-cpp YAML 反射后端。
 };
 
 namespace detail {
@@ -90,18 +90,9 @@ namespace detail {
 template<class>
 struct dependent_false : std::false_type {};
 
-/// 标准 void_t 别名。
-template<class...>
-using void_t = void;
-
-/// 剥除 cv 和引用后的类型。
-template<class T>
-struct remove_cvref {
-    using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
-};
-
-template<class T>
-using remove_cvref_t = typename remove_cvref<T>::type;
+using LTool::traits::void_t;
+using LTool::traits::remove_cvref;
+using LTool::traits::remove_cvref_t;
 
 /// 判断类型是否具备 data()/size() 文本缓冲形态。
 template<class T, class = void>

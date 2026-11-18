@@ -32,8 +32,8 @@
  * @endcode
  */
 
-#ifndef LTOOL_LCONFIG_PUBLIC_INCLUDE
-#define LTOOL_LCONFIG_PUBLIC_INCLUDE
+#ifndef LTOOL_LCONFIG_INCLUDE
+#define LTOOL_LCONFIG_INCLUDE
 
 #include "detail/LToolConfig.hpp"
 #include "detail/LConcepts.hpp"
@@ -48,6 +48,7 @@
 #include <charconv>
 #include <fstream>
 #include <functional>
+#include <locale>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -365,13 +366,7 @@ struct is_vector<std::vector<T, Alloc>> : std::true_type {};
 
 /// 以二进制模式读取整个文件文本。
 inline std::string read_file_text(const std::string& path) {
-    std::ifstream in(path.c_str(), std::ios::binary);
-    if (!in) {
-        throw std::runtime_error("LConfig failed to open file: " + path);
-    }
-    std::ostringstream out;
-    out << in.rdbuf();
-    return out.str();
+    return LFile::read_bytes(path);
 }
 
 /// 原子地把文本整体写入文件：写同目录临时文件 + fsync + rename 替换，
@@ -450,6 +445,12 @@ inline std::string find_file_in_parents(const std::string& path,
     if (ec || current.empty()) {
         current = fs::path(".");
     }
+    if (current.is_relative()) {
+        auto abs_current = fs::absolute(current, ec);
+        if (!ec && !abs_current.empty()) {
+            current = std::move(abs_current);
+        }
+    }
     if (fs::is_regular_file(current, ec)) {
         current = current.parent_path();
     }
@@ -513,6 +514,7 @@ bool parse_number(const std::string& text, T& out) {
         return false;
     } else {
         std::istringstream in(trimmed);
+        in.imbue(std::locale::classic());
         T value{};
         in >> value;
         if (in && in.eof()) {
@@ -727,4 +729,4 @@ void save(const std::string& path, const T& value, Format format = Format::auto_
 
 } // namespace LConfig
 
-#endif // LTOOL_LCONFIG_PUBLIC_INCLUDE
+#endif // LTOOL_LCONFIG_INCLUDE

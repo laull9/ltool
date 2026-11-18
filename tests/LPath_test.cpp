@@ -52,9 +52,11 @@ TEST_CASE("LPath lists, filters, and globs directory entries", "[LPath]") {
     TempTree tmp;
     auto src = tmp.root / "src";
     (src / "sub").create_directories();
+    (src / ".hidden_dir").create_directories();
     write_file(src / "a.cpp", "a");
     write_file(src / "b.hpp", "b");
     write_file(src / ".hidden.cpp", "h");
+    write_file(src / ".hidden_dir" / "secret.cpp", "s");
     write_file(src / "sub" / "c.cpp", "c");
 
     auto direct_cpp = src.files(".cpp", false);
@@ -70,11 +72,14 @@ TEST_CASE("LPath lists, filters, and globs directory entries", "[LPath]") {
     REQUIRE(headers.size() == 1);
     REQUIRE(headers[0].filename() == LPath("b.hpp"));
 
-    auto dirs = src.directories();
+    auto dirs = src.directories(false);
     REQUIRE(dirs.size() == 1);
     REQUIRE(dirs[0].filename() == LPath("sub"));
 
-    auto dir_entries = src.directories();
+    auto all_dirs = src.directories();
+    REQUIRE(all_dirs.size() == 2);
+
+    auto dir_entries = src.directories(false);
     auto dir_names = dir_entries
                    | LRange::transform([](auto& path) { return path.filename().str(); })
                    | LRange::to_vector();
@@ -108,4 +113,31 @@ TEST_CASE("LPath copies, moves, removes, formats, and hashes", "[LPath]") {
 
     REQUIRE(moved.remove());
     REQUIRE_FALSE(moved.exists());
+}
+
+TEST_CASE("LPath glob_recursive supports ** wildcards and LTempDir cleans up", "[LPath]") {
+    std::filesystem::path scoped_path;
+    {
+        LTempDir tmp("lpath_glob_");
+        scoped_path = tmp.path().path();
+        auto a = tmp.path() / "src" / "core" / "a.cpp";
+        auto b = tmp.path() / "src" / "b.cpp";
+        auto h = tmp.path() / "src" / "core" / "a.hpp";
+        auto hidden = tmp.path() / ".git" / "ignored.cpp";
+        write_file(a, "a");
+        write_file(b, "b");
+        write_file(h, "h");
+        write_file(hidden, "hidden");
+
+        auto all_cpp = tmp.path().glob_recursive("src/**/*.cpp", LPathEntryKind::File);
+        REQUIRE(all_cpp.size() == 2);
+
+        auto deep_only = tmp.path().glob_recursive("src/*/*.cpp", LPathEntryKind::File);
+        REQUIRE(deep_only.size() == 1);
+        REQUIRE(deep_only[0].filename() == "a.cpp"_lp);
+
+        auto no_hidden = LPath::glob_path_recursive(tmp.path().path() / "**/*.cpp", LPathEntryKind::File, false);
+        REQUIRE(no_hidden.size() == 2);
+    }
+    REQUIRE_FALSE(std::filesystem::exists(scoped_path));
 }

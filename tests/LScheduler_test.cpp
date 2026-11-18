@@ -242,27 +242,32 @@ TEST_CASE("compute_next 三种模式的到期计算", "[LScheduler][timing]") {
 
     // FixedDelay：从完成时刻起算。
     {
-        detail::TaskState s;
+        LSchedulerDetail::TaskState s;
         s.interval = 10ms;
         s.mode = LScheduleMode::FixedDelay;
-        REQUIRE(detail::compute_next(s, t0, t0 + 300ms) == t0 + 310ms);
+        REQUIRE(LSchedulerDetail::compute_next(s, t0, t0 + 300ms) == t0 + 310ms);
     }
     // FixedRate：迟到时快进到下一个未来 grid 槽位，不积压补跑。
     {
-        detail::TaskState s;
+        LSchedulerDetail::TaskState s;
         s.interval = 10ms;
         s.mode = LScheduleMode::FixedRate;
         // 阻塞到 355ms（第 35 个间隔与第 36 个之间），下一个合法执行点是 360ms。
-        REQUIRE(detail::compute_next(s, t0, t0 + 355ms) == t0 + 360ms);
+        REQUIRE(LSchedulerDetail::compute_next(s, t0, t0 + 355ms) == t0 + 360ms);
+        // 整倍数边界（刚好 360ms）也必须推进到严格大于 completed 的下一槽位（370ms）。
+        REQUIRE(LSchedulerDetail::compute_next(s, t0, t0 + 360ms) == t0 + 370ms);
+        // 长时间挂起（24 小时）下仍以 O(1) 时间推进到下一槽位。
+        REQUIRE(LSchedulerDetail::compute_next(s, t0, t0 + std::chrono::hours(24)) ==
+                t0 + std::chrono::hours(24) + 10ms);
         // 未迟到时与理论时间一致。
-        REQUIRE(detail::compute_next(s, t0, t0) == t0 + 10ms);
+        REQUIRE(LSchedulerDetail::compute_next(s, t0, t0) == t0 + 10ms);
     }
     // SkipMissed：迟到即丢弃原 grid，从当前时间重新对齐。
     {
-        detail::TaskState s;
+        LSchedulerDetail::TaskState s;
         s.interval = 10ms;
         s.mode = LScheduleMode::SkipMissed;
-        REQUIRE(detail::compute_next(s, t0, t0 + 355ms) == t0 + 365ms);
+        REQUIRE(LSchedulerDetail::compute_next(s, t0, t0 + 355ms) == t0 + 365ms);
     }
 }
 
@@ -376,4 +381,38 @@ TEST_CASE("新插入更早的任务会提前唤醒调度线程", "[LScheduler][t
     scheduler.after(10ms, [&] { early.fetch_add(1); });
     REQUIRE(wait_until([&] { return early.load() == 1; }, 500ms));
     late.cancel();
+}
+
+TEST_CASE("throwing error_handler and throwing executor do not deadlock destructor",
+          "[LScheduler][exception]") {
+    {
+        LScheduler scheduler;
+        std::atomic<int> runs{0};
+        scheduler.set_error_handler([&](std::exception_ptr, const LTaskInfo&) {
+            runs.fetch_add(1);
+            throw std::runtime_error("handler boom");
+        });
+        scheduler.after(5ms, [] { throw std::runtime_error("task boom"); });
+        REQUIRE(wait_until([&] { return runs.load() == 1; }));
+    }
+
+    {
+        std::atomic<int> calls{0};
+        LScheduler scheduler([&](std::function<void()>) {
+            calls.fetch_add(1);
+            throw std::runtime_error("executor boom");
+        });
+        scheduler.after(5ms, [] {});
+        REQUIRE(wait_until([&] { return calls.load() == 1; }));
+    }
+}
+
+TEST_CASE("wait_idle waits until all scheduled one-shot/limited tasks complete", "[LScheduler][idle]") {
+    LScheduler scheduler;
+    std::atomic<int> count{0};
+    scheduler.after(15ms, [&] { count.fetch_add(1); });
+    scheduler.repeat(2, 10ms, [&] { count.fetch_add(1); });
+
+    REQUIRE(scheduler.wait_idle(1000ms));
+    REQUIRE(count.load() == 3);
 }

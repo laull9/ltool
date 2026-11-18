@@ -18,36 +18,26 @@
 #include <string_view>
 #include <system_error>
 #include <type_traits>
+#include <unordered_map>
 
-#include "detail/LWeb/Error.hpp"
-#include "detail/LWeb/Types.hpp"
+#include "../../LString.hpp"
+#include "Error.hpp"
+#include "Types.hpp"
 
 namespace LWeb {
 
 namespace detail {
 
-/// 整型解析（含 char 底层特例：from_chars 不支持 char）。
+/// 整型解析（使用 std::from_chars 做严格范围与全串校验）。
 template <typename T>
 T ParseIntegral(std::string_view text) {
-    if constexpr (std::same_as<T, char> || std::same_as<T, signed char> ||
-                  std::same_as<T, unsigned char>) {
-        int value{};
-        auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(),
-                                         value);
-        if (ec != std::errc{} || ptr != text.data() + text.size()) {
-            throw BindingError("INVALID_VALUE", "value is not a valid integer");
-        }
-        return static_cast<T>(value);
+    T value{};
+    auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(),
+                                     value);
+    if (ec != std::errc{} || ptr != text.data() + text.size()) {
+        throw BindingError("INVALID_VALUE", "value is not a valid integer");
     }
-    else {
-        T value{};
-        auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(),
-                                         value);
-        if (ec != std::errc{} || ptr != text.data() + text.size()) {
-            throw BindingError("INVALID_VALUE", "value is not a valid integer");
-        }
-        return value;
-    }
+    return value;
 }
 
 /// 字符串 -> 类型 T 的转换；失败抛 BindingError（400）。
@@ -172,6 +162,66 @@ inline std::string_view Body(Request& req) {
 template <typename T, typename Codec = LWebJsonCodec>
 T BodyJson(Request& req) {
     return Codec::template Deserialize<T>(req.get_body());
+}
+
+/// 解析 `application/x-www-form-urlencoded` 表单请求体为键值对（同名键后者覆盖前者）。
+inline std::unordered_map<std::string, std::string> Form(Request& req) {
+    std::unordered_map<std::string, std::string> fields;
+    std::string_view body = req.get_body();
+    std::size_t pos = 0;
+    while (pos < body.size()) {
+        std::size_t amp = body.find('&', pos);
+        std::string_view pair = (amp == std::string_view::npos)
+                                    ? body.substr(pos)
+                                    : body.substr(pos, amp - pos);
+        if (!pair.empty()) {
+            std::size_t eq = pair.find('=');
+            std::string key = LStringDetail::url_decode(
+                eq == std::string_view::npos ? pair : pair.substr(0, eq), true);
+            std::string val = (eq == std::string_view::npos)
+                                  ? std::string{}
+                                  : LStringDetail::url_decode(pair.substr(eq + 1), true);
+            fields.insert_or_assign(std::move(key), std::move(val));
+        }
+        if (amp == std::string_view::npos) {
+            break;
+        }
+        pos = amp + 1;
+    }
+    return fields;
+}
+
+/// 取单个表单字段原始字符串（缺失返回空串）。
+inline std::string FormValue(Request& req, std::string_view key) {
+    auto fields = Form(req);
+    auto it = fields.find(std::string(key));
+    if (it == fields.end()) {
+        return {};
+    }
+    return it->second;
+}
+
+/// 取单个表单字段并转换为类型 T；缺失或转换失败抛 BindingError（400）。
+template <typename T>
+T FormValue(Request& req, std::string_view key) {
+    auto fields = Form(req);
+    auto it = fields.find(std::string(key));
+    if (it == fields.end()) {
+        throw BindingError("MISSING_FORM_FIELD",
+                           "required form field is missing: " + std::string(key));
+    }
+    return detail::ParseValue<T>(it->second);
+}
+
+/// 取单个表单字段并转换为类型 T；缺失时返回 fallback。
+template <typename T>
+T FormValueOr(Request& req, std::string_view key, T fallback) {
+    auto fields = Form(req);
+    auto it = fields.find(std::string(key));
+    if (it == fields.end()) {
+        return fallback;
+    }
+    return detail::ParseValue<T>(it->second);
 }
 
 } // namespace LWeb

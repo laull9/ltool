@@ -15,7 +15,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "detail/LWeb/Types.hpp"
+#include "Types.hpp"
 
 namespace LWeb {
 namespace detail {

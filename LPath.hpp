@@ -27,8 +27,8 @@
  * @endcode
  */
 
-#ifndef LPATH_INCLUDE
-#define LPATH_INCLUDE
+#ifndef LTOOL_LPATH_INCLUDE
+#define LTOOL_LPATH_INCLUDE
 
 #include "LString.hpp"
 
@@ -43,6 +43,10 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#if LTOOL_HAS_STD_FORMAT
+#include <format>
+#endif // LTOOL_HAS_STD_FORMAT
 
 #if LTOOL_HAS_FILESYSTEM
 #include <filesystem>
@@ -66,7 +70,8 @@ enum class LPathEntryKind {
 class LPath;
 
 namespace fmt {
-template<typename Char>
+/// fmt 格式化器前置声明。
+template<class Char>
 struct formatter<LPath, Char, void> : formatter<std::filesystem::path, Char> {
     template<class FormatContext>
     typename FormatContext::iterator format(const LPath& value, FormatContext& ctx) const;
@@ -159,6 +164,50 @@ inline bool wildcard_match(LStringDetail::string_view text, LStringDetail::strin
         ++pi;
     }
     return pi == pattern.size();
+}
+
+inline std::vector<std::string> split_path_segments(const std::filesystem::path& p) {
+    std::vector<std::string> parts;
+    for (const auto& seg : p.lexically_normal()) {
+        auto s = seg.string();
+        if (s.empty() || s == ".") {
+            continue;
+        }
+        parts.push_back(std::move(s));
+    }
+    return parts;
+}
+
+inline bool has_glob_meta(const std::string& seg) noexcept {
+    return seg.find('*') != std::string::npos || seg.find('?') != std::string::npos;
+}
+
+inline bool match_segments(const std::vector<std::string>& path_segs,
+                           std::size_t pi,
+                           const std::vector<std::string>& pat_segs,
+                           std::size_t qi) {
+    while (qi < pat_segs.size()) {
+        if (pat_segs[qi] == "**") {
+            while (qi + 1 < pat_segs.size() && pat_segs[qi + 1] == "**") {
+                ++qi;
+            }
+            if (qi + 1 == pat_segs.size()) {
+                return true;
+            }
+            for (std::size_t k = pi; k <= path_segs.size(); ++k) {
+                if (match_segments(path_segs, k, pat_segs, qi + 1)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (pi >= path_segs.size() || !wildcard_match(path_segs[pi], pat_segs[qi])) {
+            return false;
+        }
+        ++pi;
+        ++qi;
+    }
+    return pi == path_segs.size();
 }
 
 } // namespace LPathDetail
@@ -644,8 +693,11 @@ public:
         if (recursive) {
             for (std::filesystem::recursive_directory_iterator it(directory, options), end;
                  it != end; ++it) {
-                if ((!include_hidden && LPathDetail::is_hidden_name(it->path())) ||
-                    !LPathDetail::matches_kind(*it, kind)) {
+                if (!include_hidden && LPathDetail::is_hidden_name(it->path())) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
+                if (!LPathDetail::matches_kind(*it, kind)) {
                     continue;
                 }
                 paths.push_back(it->path());
@@ -723,13 +775,163 @@ public:
         return entries;
     }
 
+    /**
+     * @brief 支持 `**` 多级目录通配的增强查找。
+     *
+     * 例如 `"src / ** / *.cpp"` 会匹配 `src` 及其所有深度子目录下的 `.cpp` 文件；
+     * `"tests / * / *.cpp"` 只匹配一层子目录。
+     */
+    static entry_list glob_path_recursive(const std::filesystem::path& pattern,
+                                          LPathEntryKind kind = LPathEntryKind::Any,
+                                          bool include_hidden = true) {
+        std::filesystem::path base;
+        std::vector<std::string> pat_segs;
+        bool in_glob = false;
+        for (const auto& part : pattern.lexically_normal()) {
+            std::string s = part.string();
+            if (!in_glob) {
+                if (!s.empty() && s != "." && LPathDetail::has_glob_meta(s)) {
+                    in_glob = true;
+                    pat_segs.push_back(std::move(s));
+                } else {
+                    base /= part;
+                }
+            } else {
+                if (!s.empty() && s != ".") {
+                    pat_segs.push_back(std::move(s));
+                }
+            }
+        }
+
+        if (pat_segs.empty()) {
+            std::error_code ec;
+            auto st = std::filesystem::symlink_status(pattern, ec);
+            if (ec || st.type() == std::filesystem::file_type::not_found) {
+                return {};
+            }
+            if (kind == LPathEntryKind::File && !std::filesystem::is_regular_file(st)) {
+                return {};
+            }
+            if (kind == LPathEntryKind::Directory && !std::filesystem::is_directory(st)) {
+                return {};
+            }
+            return {LPath(pattern)};
+        }
+
+        std::filesystem::path search_root = base.empty() ? std::filesystem::path(".") : base;
+        if (!exists(search_root)) {
+            return {};
+        }
+
+        auto entries = list(search_root, kind, true, include_hidden);
+        entries.erase(std::remove_if(entries.begin(), entries.end(), [&](const LPath& entry) {
+            auto rel = entry.path().lexically_relative(search_root);
+            auto rel_segs = LPathDetail::split_path_segments(rel);
+            return !LPathDetail::match_segments(rel_segs, 0, pat_segs, 0);
+        }), entries.end());
+        return entries;
+    }
+
+    /// 在当前目录下执行支持 `**` 的通配查找。
+    entry_list glob_recursive(const std::filesystem::path& relative_pattern,
+                              LPathEntryKind kind = LPathEntryKind::Any,
+                              bool include_hidden = true) const {
+        return glob_path_recursive(path_ / relative_pattern, kind, include_hidden);
+    }
+
     /// 使用当前标准下可用的标准哈希器对路径求哈希。
     std::size_t hash() const noexcept {
         return std::filesystem::hash_value(path_);
     }
 };
 
-/// PascalCase 别名，供偏好类型命名风格的代码使用。
+/**
+ * @brief RAII 临时目录守卫：构造时创建唯一临时目录，析构时自动递归删除。
+ */
+class LTempDir {
+public:
+    /// 在系统临时目录下创建带前缀的唯一临时目录。
+    explicit LTempDir(LStringDetail::string_view prefix = "ltool_")
+        : LTempDir(LPath::temp_directory().path(), prefix) {}
+
+    /// 在指定父目录下创建唯一临时目录。
+    LTempDir(const std::filesystem::path& parent, LStringDetail::string_view prefix) {
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        for (int i = 0; i < 100; ++i) {
+            auto candidate = parent / (std::string(prefix) + LPathDetail::unique_token());
+            if (std::filesystem::create_directory(candidate, ec) && !ec) {
+                dir_ = LPath(std::move(candidate));
+                return;
+            }
+        }
+        throw std::runtime_error("cannot create unique temporary directory");
+    }
+
+    LTempDir(const LTempDir&) = delete;
+    LTempDir& operator=(const LTempDir&) = delete;
+
+    /// 移动构造：接管临时目录所有权。
+    LTempDir(LTempDir&& other) noexcept
+        : dir_(std::move(other.dir_))
+        , keep_(other.keep_) {
+        other.keep_ = true;
+    }
+
+    /// 移动赋值：清理当前目录后接管新目录。
+    LTempDir& operator=(LTempDir&& other) noexcept {
+        if (this != &other) {
+            cleanup();
+            dir_ = std::move(other.dir_);
+            keep_ = other.keep_;
+            other.keep_ = true;
+        }
+        return *this;
+    }
+
+    /// 析构：若未调用 keep() 或 release()，则递归删除该目录。
+    ~LTempDir() {
+        cleanup();
+    }
+
+    /// 获取临时目录路径对象。
+    [[nodiscard]] const LPath& path() const noexcept {
+        return dir_;
+    }
+
+    /// 获取字符串形式的目录路径。
+    [[nodiscard]] std::string string() const {
+        return dir_.string();
+    }
+
+    /// 禁止析构时自动删除目录（保留到磁盘）。
+    void keep(bool enabled = true) noexcept {
+        keep_ = enabled;
+    }
+
+    /// 放弃所有权并保留目录，返回其路径对象。
+    [[nodiscard]] LPath release() noexcept {
+        keep_ = true;
+        return dir_;
+    }
+
+private:
+    void cleanup() noexcept {
+        if (!keep_ && !dir_.empty()) {
+            std::error_code ec;
+            std::filesystem::remove_all(dir_.path(), ec);
+        }
+    }
+
+    LPath dir_;
+    bool keep_ = false;
+};
+
+namespace LTool {
+using Path = ::LPath;                   ///< 路径类型别名。
+using PathEntryKind = ::LPathEntryKind; ///< 目录项过滤枚举别名。
+using TempDir = ::LTempDir;             ///< 临时目录 RAII 守卫别名。
+} // namespace LTool
 
 /// 用户自定义字面量，用于从字符串字面量简洁构造 LPath。
 inline LPath operator""_lp(const char* text, std::size_t size) {
@@ -738,13 +940,25 @@ inline LPath operator""_lp(const char* text, std::size_t size) {
 
 /// fmt 格式化器实现：LPath 复用 std::filesystem::path 的格式化规则。
 namespace fmt {
-template<typename Char>
+template<class Char>
 template<class FormatContext>
 typename FormatContext::iterator formatter<LPath, Char, void>::format(
     const LPath& value, FormatContext& ctx) const {
     return formatter<std::filesystem::path, Char>::format(value.path(), ctx);
 }
 } // namespace fmt
+
+#if LTOOL_HAS_STD_FORMAT
+/// std::format 格式化器：LPath 按字符串路径输出。
+template<>
+struct std::formatter<LPath, char> : std::formatter<std::string, char> {
+    /// 将 LPath 写入 std::format 输出上下文。
+    template<class FormatContext>
+    auto format(const LPath& value, FormatContext& ctx) const {
+        return std::formatter<std::string, char>::format(value.string(), ctx);
+    }
+};
+#endif // LTOOL_HAS_STD_FORMAT
 
 /// std::hash 特化，使 LPath 可用于无序容器。
 template<>
@@ -755,4 +969,4 @@ struct std::hash<LPath> {
     }
 };
 
-#endif // !LPATH_INCLUDE
+#endif // !LTOOL_LPATH_INCLUDE

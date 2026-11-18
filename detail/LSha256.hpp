@@ -57,7 +57,7 @@ inline std::uint32_t sha256_read_be32(const unsigned char* bytes) noexcept {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     return value;
-#elif defined(__clang__) || defined(__GNUC__)
+#elif LTOOL_COMPILER_CLANG || LTOOL_COMPILER_GCC
     return __builtin_bswap32(value);
 #else
     return ((value & 0x000000FFU) << 24) |
@@ -421,6 +421,53 @@ inline std::string sha256_hex(const void* data, std::size_t size) {
 
 inline std::string sha256_hex(const std::string& bytes) {
     return sha256_hex(bytes.data(), bytes.size());
+}
+
+/// 计算 HMAC-SHA256 的 32 字节摘要。
+inline std::array<unsigned char, 32> hmac_sha256_digest(
+    const void* key,
+    std::size_t key_size,
+    const void* data,
+    std::size_t data_size
+) {
+    std::array<unsigned char, 64> normalized_key{};
+    if (key != nullptr && key_size > 0) {
+        if (key_size > 64) {
+            auto hashed = sha256_digest(key, key_size);
+            std::copy(hashed.begin(), hashed.end(), normalized_key.begin());
+        } else {
+            const auto* bytes = static_cast<const unsigned char*>(key);
+            std::copy(bytes, bytes + key_size, normalized_key.begin());
+        }
+    }
+
+    std::array<unsigned char, 64> ipad{};
+    std::array<unsigned char, 64> opad{};
+    for (std::size_t i = 0; i < 64; ++i) {
+        ipad[i] = static_cast<unsigned char>(normalized_key[i] ^ 0x36U);
+        opad[i] = static_cast<unsigned char>(normalized_key[i] ^ 0x5CU);
+    }
+
+    Sha256 inner;
+    inner.update(ipad.data(), ipad.size());
+    inner.update(data, data_size);
+    auto inner_digest = inner.final_digest();
+
+    Sha256 outer;
+    outer.update(opad.data(), opad.size());
+    outer.update(inner_digest.data(), inner_digest.size());
+    return outer.final_digest();
+}
+
+/// 计算 HMAC-SHA256 的 64 位小写十六进制摘要。
+inline std::string hmac_sha256_hex(
+    const void* key,
+    std::size_t key_size,
+    const void* data,
+    std::size_t data_size
+) {
+    auto digest = hmac_sha256_digest(key, key_size, data, data_size);
+    return hex_lower(digest.data(), digest.size());
 }
 
 } // namespace detail

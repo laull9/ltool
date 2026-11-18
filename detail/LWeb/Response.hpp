@@ -17,8 +17,8 @@
 #include <string_view>
 #include <utility>
 
-#include "detail/LWeb/Error.hpp"
-#include "detail/LWeb/Traits.hpp"
+#include "Error.hpp"
+#include "Traits.hpp"
 
 namespace LWeb {
 

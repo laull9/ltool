@@ -18,7 +18,7 @@
 #include <string_view>
 #include <utility>
 
-#include "pkgs/cinatra/cinatra.hpp"
+#include "../../pkgs/cinatra/cinatra.hpp"
 
 namespace LWeb {
 

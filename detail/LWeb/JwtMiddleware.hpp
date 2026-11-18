@@ -26,8 +26,8 @@
 #include <utility>
 #include <vector>
 
-#include "detail/LWeb/Jwt.hpp"
-#include "detail/LWeb/Response.hpp"
+#include "Jwt.hpp"
+#include "Response.hpp"
 
 namespace LWeb {
 

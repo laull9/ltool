@@ -30,8 +30,8 @@
 #include <utility>
 #include <vector>
 
-#include "detail/LSha256.hpp"
-#include "detail/LWeb/Types.hpp"
+#include "../LSha256.hpp"
+#include "Types.hpp"
 
 namespace LWeb {
 
@@ -466,6 +466,10 @@ struct JwtVerifyResult {
     JwtError error = JwtError::ok;
     std::optional<JwtClaims> claims;
 
+    /// 是否验证成功。
+    bool Ok() const noexcept { return error == JwtError::ok; }
+
+    /// Ok() 的兼容别名。
     bool ok() const noexcept { return error == JwtError::ok; }
 
     /// HTTP 错误 code（供 JwtAuth 映射 401）。

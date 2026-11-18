@@ -101,7 +101,7 @@ struct LTaskInfo {
     LScheduleMode mode;                           ///< 调度策略。
 };
 
-namespace detail {
+namespace LSchedulerDetail {
 
 using steady_clock = std::chrono::steady_clock;
 using steady_time = steady_clock::time_point;
@@ -207,11 +207,12 @@ inline steady_time compute_next(const TaskState& s, steady_time scheduled, stead
     case LScheduleMode::FixedDelay:
         return completed + iv;
     case LScheduleMode::FixedRate: {
-        auto next = scheduled + iv;
-        while (next <= completed) {
-            next += iv;
+        const auto next = scheduled + iv;
+        if (completed < next) {
+            return next;
         }
-        return next;
+        const auto missed = (completed - scheduled) / iv;
+        return scheduled + iv * (missed + 1);
     }
     case LScheduleMode::SkipMissed: {
         auto next = scheduled + iv;
@@ -224,7 +225,7 @@ inline steady_time compute_next(const TaskState& s, steady_time scheduled, stead
     return completed + iv;
 }
 
-} // namespace detail
+} // namespace LSchedulerDetail
 
 /**
  * @brief 调度器的共享内部状态。
@@ -234,14 +235,16 @@ inline steady_time compute_next(const TaskState& s, steady_time scheduled, stead
  * 推入新条目）。句柄仅持有 weak_ptr，因此 Scheduler 析构后句柄操作自然降级为
  * no-op，不会产生悬空指针。
  */
-struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
-    using steady_time = detail::steady_time;
+namespace LSchedulerDetail {
+
+struct SchedulerCore : std::enable_shared_from_this<SchedulerCore> {
+    using steady_time = LSchedulerDetail::steady_time;
 
     std::mutex mutex;
     std::condition_variable cv;
     std::condition_variable in_flight_cv;
 
-    std::priority_queue<detail::HeapEntry> heap;
+    std::priority_queue<LSchedulerDetail::HeapEntry> heap;
 
     std::jthread thread;
     std::atomic<std::uint64_t> next_id{1};
@@ -249,11 +252,11 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
     std::atomic<std::size_t> in_flight{0}; ///< executor 上在飞任务数。
     std::atomic<bool> stopping{false};
 
-    detail::ExecutorFn executor; ///< 空函数表示内联执行。
+    LSchedulerDetail::ExecutorFn executor; ///< 空函数表示内联执行。
     std::function<void(std::exception_ptr, const LTaskInfo&)> error_handler;
     std::atomic<LTaskErrorPolicy> error_policy{LTaskErrorPolicy::Continue};
 
-    explicit LSchedulerCore(detail::ExecutorFn ex)
+    explicit SchedulerCore(LSchedulerDetail::ExecutorFn ex)
         : executor(std::move(ex)) {
         thread = std::jthread([this] { run(); });
     }
@@ -270,12 +273,27 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
     void run() {
         std::unique_lock<std::mutex> lock(mutex);
         while (!stopping.load(std::memory_order_relaxed)) {
+            while (!heap.empty()) {
+                const auto& top_state = heap.top().state;
+                if (!top_state ||
+                    heap.top().generation != top_state->generation.load(std::memory_order_relaxed) ||
+                    top_state->cancelled.load(std::memory_order_relaxed) ||
+                    top_state->paused.load(std::memory_order_relaxed) ||
+                    top_state->finished.load(std::memory_order_relaxed)) {
+                    heap.pop();
+                } else {
+                    break;
+                }
+            }
             if (heap.empty()) {
+                if (in_flight.load(std::memory_order_relaxed) == 0) {
+                    in_flight_cv.notify_all();
+                }
                 cv.wait(lock, [this] { return stopping.load(std::memory_order_relaxed) || !heap.empty(); });
                 continue;
             }
 
-            const auto now = detail::steady_clock::now();
+            const auto now = LSchedulerDetail::steady_clock::now();
             if (heap.top().due > now) {
                 // 截止时间必须拷贝：wait_until 按引用持有它，而其他线程 push 可能
                 // 使堆底层 vector 扩容（悬空引用）或改变堆顶。堆顶变得更早时也要
@@ -284,7 +302,7 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
                 cv.wait_until(lock, due, [this, due] {
                     return stopping.load(std::memory_order_relaxed) || heap.empty() ||
                            heap.top().due < due ||
-                           heap.top().due <= detail::steady_clock::now();
+                           heap.top().due <= LSchedulerDetail::steady_clock::now();
                 });
                 continue;
             }
@@ -319,9 +337,9 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
             lock.unlock();
 
             // job 持有 weak_ptr：即使 Scheduler 正在析构，完成后也不会触碰已释放内存。
-            std::weak_ptr<LSchedulerCore> weak = shared_from_this();
+            std::weak_ptr<SchedulerCore> weak = shared_from_this();
             auto job = [weak, state, ctx, scheduled = entry.due, is_last,
-                        handler = std::move(handler), policy]() mutable {
+                        handler, policy]() mutable {
                 auto core = weak.lock();
                 if (!core) {
                     return;
@@ -332,7 +350,10 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
                 } catch (...) {
                     const auto ep = std::current_exception();
                     if (handler) {
-                        handler(ep, LTaskInfo{state->id, ctx.run_count, state->interval, state->mode});
+                        try {
+                            handler(ep, LTaskInfo{state->id, ctx.run_count, state->interval, state->mode});
+                        } catch (...) {
+                        }
                     }
                     cancel_task = (policy == LTaskErrorPolicy::Cancel);
                 }
@@ -343,7 +364,21 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
             };
 
             if (executor) {
-                executor(std::move(job));
+                try {
+                    executor(std::move(job));
+                } catch (...) {
+                    if (handler) {
+                        try {
+                            handler(std::current_exception(),
+                                    LTaskInfo{state->id, ctx.run_count, state->interval, state->mode});
+                        } catch (...) {
+                        }
+                    }
+                    if (policy == LTaskErrorPolicy::Cancel) {
+                        state->cancelled.store(true, std::memory_order_relaxed);
+                    }
+                    on_task_completed(state, entry.due, is_last);
+                }
             } else {
                 job();
             }
@@ -358,11 +393,17 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
      * 在持锁状态下完成：判断是否继续、计算下次到期、递增 generation、推入堆。
      * 若正在析构则只做在飞计数结算，不再调度。
      */
-    void on_task_completed(const std::shared_ptr<detail::TaskState>& state,
+    void on_task_completed(const std::shared_ptr<LSchedulerDetail::TaskState>& state,
                            steady_time scheduled, bool is_last) {
         std::lock_guard<std::mutex> lock(mutex);
-        in_flight.fetch_sub(1, std::memory_order_relaxed);
-        in_flight_cv.notify_one();
+        struct InFlightDec {
+            std::atomic<std::size_t>& count;
+            std::condition_variable& cv_ref;
+            ~InFlightDec() {
+                count.fetch_sub(1, std::memory_order_relaxed);
+                cv_ref.notify_all();
+            }
+        } dec{in_flight, in_flight_cv};
 
         if (stopping.load(std::memory_order_relaxed)) {
             return;
@@ -377,19 +418,19 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
             return;
         }
 
-        const auto completed = detail::steady_clock::now();
-        const auto next = detail::compute_next(*state, scheduled, completed);
+        const auto completed = LSchedulerDetail::steady_clock::now();
+        const auto next = LSchedulerDetail::compute_next(*state, scheduled, completed);
 
         state->generation.fetch_add(1, std::memory_order_relaxed);
         const auto gen = state->generation.load(std::memory_order_relaxed);
-        state->next_run_ns.store(detail::to_ns(next), std::memory_order_relaxed);
+        state->next_run_ns.store(LSchedulerDetail::to_ns(next), std::memory_order_relaxed);
 
-        heap.push(detail::HeapEntry{next, gen, state, seq++});
+        heap.push(LSchedulerDetail::HeapEntry{next, gen, state, seq++});
         cv.notify_one();
     }
 
     /// 取消任务（幂等）；若 callback 在飞则结束后不再调度。
-    void cancel(const std::shared_ptr<detail::TaskState>& state) {
+    void cancel(const std::shared_ptr<LSchedulerDetail::TaskState>& state) {
         std::lock_guard<std::mutex> lock(mutex);
         if (state->cancelled.load(std::memory_order_relaxed) ||
             state->finished.load(std::memory_order_relaxed)) {
@@ -402,7 +443,7 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
     }
 
     /// 暂停任务；不再开始新的 callback，正在执行的 callback 不强制终止。
-    void pause(const std::shared_ptr<detail::TaskState>& state) {
+    void pause(const std::shared_ptr<LSchedulerDetail::TaskState>& state) {
         std::lock_guard<std::mutex> lock(mutex);
         if (state->cancelled.load(std::memory_order_relaxed) ||
             state->finished.load(std::memory_order_relaxed)) {
@@ -417,7 +458,7 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
     }
 
     /// 恢复任务；以当前时间重新计算下次到期，不补跑暂停期间的周期。
-    void resume(const std::shared_ptr<detail::TaskState>& state) {
+    void resume(const std::shared_ptr<LSchedulerDetail::TaskState>& state) {
         std::lock_guard<std::mutex> lock(mutex);
         if (stopping.load(std::memory_order_relaxed) ||
             state->cancelled.load(std::memory_order_relaxed) ||
@@ -428,33 +469,35 @@ struct LSchedulerCore : std::enable_shared_from_this<LSchedulerCore> {
             return; // 未暂停
         }
         // 周期任务等待一个完整间隔；一次性任务尽快执行。
-        auto due = detail::steady_clock::now();
+        auto due = LSchedulerDetail::steady_clock::now();
         if (state->interval.count() > 0) {
             due += state->interval;
         }
         state->generation.fetch_add(1, std::memory_order_relaxed);
         const auto gen = state->generation.load(std::memory_order_relaxed);
-        state->next_run_ns.store(detail::to_ns(due), std::memory_order_relaxed);
-        heap.push(detail::HeapEntry{due, gen, state, seq++});
+        state->next_run_ns.store(LSchedulerDetail::to_ns(due), std::memory_order_relaxed);
+        heap.push(LSchedulerDetail::HeapEntry{due, gen, state, seq++});
         cv.notify_one();
     }
 };
 
+} // namespace LSchedulerDetail
+
 /**
  * @brief 已调度任务的轻量句柄，可复制/移动，不拥有线程。
  *
- * 句柄内部持有一个 shared_ptr<TaskState> 与一个 weak_ptr<LSchedulerCore>，因此：
+ * 句柄内部持有一个 shared_ptr<TaskState> 与一个 weak_ptr<SchedulerCore>，因此：
  * - Scheduler 析构后，句柄的查询与操作仍是安全的（操作降级为 no-op）。
  * - 重复 cancel() 幂等；cancel 已在执行的 callback 不中断其当前运行，但不会再调度。
  */
 class LScheduledTask {
 public:
-    using shared_state = std::shared_ptr<detail::TaskState>;
+    using shared_state = std::shared_ptr<LSchedulerDetail::TaskState>;
 
     /// 默认构造：空句柄（等价于已取消任务）。
     LScheduledTask() = default;
 
-    LScheduledTask(shared_state state, std::weak_ptr<LSchedulerCore> core)
+    LScheduledTask(shared_state state, std::weak_ptr<LSchedulerDetail::SchedulerCore> core)
         : state_(std::move(state)), core_(std::move(core)) {}
 
     /// 句柄是否指向真实任务。
@@ -540,7 +583,7 @@ public:
 
 private:
     shared_state state_;
-    std::weak_ptr<LSchedulerCore> core_;
+    std::weak_ptr<LSchedulerDetail::SchedulerCore> core_;
 };
 
 /**
@@ -567,13 +610,13 @@ public:
      * LScheduler scheduler([](std::function<void()> job) { pool.post(std::move(job)); });
      * @endcode
      */
-    explicit LScheduler(detail::ExecutorFn executor);
+    explicit LScheduler(LSchedulerDetail::ExecutorFn executor);
 
     /**
      * @brief 用任意线程池构造（要求其具有 post(std::function<void()>) 方法）。
      */
-    template<class Pool LTOOL_ENABLE_IF(detail::has_post<Pool>::value)>
-        LTOOL_REQUIRES(detail::has_post<Pool>::value)
+    template<class Pool LTOOL_ENABLE_IF(LSchedulerDetail::has_post<Pool>::value)>
+        LTOOL_REQUIRES(LSchedulerDetail::has_post<Pool>::value)
     explicit LScheduler(Pool& pool)
         : LScheduler([&pool](std::function<void()> job) {
               pool.post(std::move(job));
@@ -592,8 +635,8 @@ public:
     LScheduledTask after(const std::chrono::duration<Rep, Period>& delay, F&& callback) {
         auto state = make_state(std::forward<F>(callback));
         state->max_runs = 1;
-        const auto due = detail::steady_clock::now() +
-                         std::chrono::duration_cast<detail::steady_clock::duration>(delay);
+        const auto due = LSchedulerDetail::steady_clock::now() +
+                         std::chrono::duration_cast<LSchedulerDetail::steady_clock::duration>(delay);
         return schedule(std::move(state), due);
     }
 
@@ -608,8 +651,8 @@ public:
         auto state = make_state(std::forward<F>(callback));
         state->max_runs = 1;
         const auto delay = when - std::chrono::system_clock::now();
-        const auto due = detail::steady_clock::now() +
-                         std::chrono::duration_cast<detail::steady_clock::duration>(delay);
+        const auto due = LSchedulerDetail::steady_clock::now() +
+                         std::chrono::duration_cast<LSchedulerDetail::steady_clock::duration>(delay);
         return schedule(std::move(state), due);
     }
 
@@ -620,11 +663,11 @@ public:
     LScheduledTask every(const std::chrono::duration<Rep, Period>& interval, F&& callback,
                          LScheduleMode mode = LScheduleMode::FixedDelay) {
         auto state = make_state(std::forward<F>(callback));
-        const auto iv = std::chrono::duration_cast<detail::steady_clock::duration>(interval);
+        const auto iv = std::chrono::duration_cast<LSchedulerDetail::steady_clock::duration>(interval);
         validate_interval(iv);
         state->interval = iv;
         state->mode = mode;
-        const auto due = detail::steady_clock::now() + iv;
+        const auto due = LSchedulerDetail::steady_clock::now() + iv;
         return schedule(std::move(state), due);
     }
 
@@ -635,7 +678,7 @@ public:
     LScheduledTask repeat(std::uint64_t count, const std::chrono::duration<Rep, Period>& interval,
                           F&& callback, LScheduleMode mode = LScheduleMode::FixedDelay) {
         auto state = make_state(std::forward<F>(callback));
-        const auto iv = std::chrono::duration_cast<detail::steady_clock::duration>(interval);
+        const auto iv = std::chrono::duration_cast<LSchedulerDetail::steady_clock::duration>(interval);
         validate_interval(iv);
         state->interval = iv;
         state->mode = mode;
@@ -645,7 +688,7 @@ public:
             state->finished.store(true, std::memory_order_relaxed);
             return LScheduledTask(std::move(state), core_);
         }
-        const auto due = detail::steady_clock::now() + iv;
+        const auto due = LSchedulerDetail::steady_clock::now() + iv;
         return schedule(std::move(state), due);
     }
 
@@ -682,15 +725,41 @@ public:
         return core_ && !core_->stopping.load(std::memory_order_relaxed);
     }
 
+    /// 阻塞等待直至所有已排期且活跃的任务和在飞回调全部完成。
+    void wait_idle() const {
+        if (!core_) {
+            return;
+        }
+        std::unique_lock<std::mutex> lock(core_->mutex);
+        core_->in_flight_cv.wait(lock, [this] {
+            return core_->stopping.load(std::memory_order_relaxed) ||
+                   (core_->in_flight.load(std::memory_order_relaxed) == 0 && core_->heap.empty());
+        });
+    }
+
+    /// 在指定超时时间内等待调度器变为空闲；超时返回 false。
+    template<class Rep, class Period>
+    bool wait_idle(const std::chrono::duration<Rep, Period>& timeout) const {
+        if (!core_) {
+            return true;
+        }
+        std::unique_lock<std::mutex> lock(core_->mutex);
+        return core_->in_flight_cv.wait_for(lock, timeout, [this] {
+            return core_->stopping.load(std::memory_order_relaxed) ||
+                   (core_->in_flight.load(std::memory_order_relaxed) == 0 && core_->heap.empty());
+        });
+    }
+
 private:
     template<class F>
-    std::shared_ptr<detail::TaskState> make_state(F&& callback);
+    std::shared_ptr<LSchedulerDetail::TaskState> make_state(F&& callback);
 
-    LScheduledTask schedule(std::shared_ptr<detail::TaskState> state, detail::steady_time due);
+    LScheduledTask schedule(std::shared_ptr<LSchedulerDetail::TaskState> state,
+                            LSchedulerDetail::steady_time due);
 
-    static void validate_interval(detail::steady_clock::duration iv);
+    static void validate_interval(LSchedulerDetail::steady_clock::duration iv);
 
-    std::shared_ptr<LSchedulerCore> core_;
+    std::shared_ptr<LSchedulerDetail::SchedulerCore> core_;
 };
 
 /**
@@ -710,10 +779,10 @@ auto make_pool_executor(Pool& pool) {
 // ---------------------------------------------------------------------------
 
 inline LScheduler::LScheduler()
-    : core_(std::make_shared<LSchedulerCore>(detail::ExecutorFn{})) {}
+    : core_(std::make_shared<LSchedulerDetail::SchedulerCore>(LSchedulerDetail::ExecutorFn{})) {}
 
-inline LScheduler::LScheduler(detail::ExecutorFn executor)
-    : core_(std::make_shared<LSchedulerCore>(std::move(executor))) {}
+inline LScheduler::LScheduler(LSchedulerDetail::ExecutorFn executor)
+    : core_(std::make_shared<LSchedulerDetail::SchedulerCore>(std::move(executor))) {}
 
 inline LScheduler::~LScheduler() {
     if (!core_) {
@@ -737,34 +806,34 @@ inline LScheduler::~LScheduler() {
 }
 
 template<class F>
-std::shared_ptr<detail::TaskState> LScheduler::make_state(F&& callback) {
-    auto state = std::make_shared<detail::TaskState>();
+std::shared_ptr<LSchedulerDetail::TaskState> LScheduler::make_state(F&& callback) {
+    auto state = std::make_shared<LSchedulerDetail::TaskState>();
     state->id = core_->next_id.fetch_add(1, std::memory_order_relaxed);
-    state->callback = detail::make_callback(std::forward<F>(callback));
+    state->callback = LSchedulerDetail::make_callback(std::forward<F>(callback));
     state->error_policy = core_->error_policy.load(std::memory_order_relaxed);
     return state;
 }
 
-inline LScheduledTask LScheduler::schedule(std::shared_ptr<detail::TaskState> state,
-                                           detail::steady_time due) {
+inline LScheduledTask LScheduler::schedule(std::shared_ptr<LSchedulerDetail::TaskState> state,
+                                           LSchedulerDetail::steady_time due) {
     const auto gen = state->generation.load(std::memory_order_relaxed);
-    state->next_run_ns.store(detail::to_ns(due), std::memory_order_relaxed);
+    state->next_run_ns.store(LSchedulerDetail::to_ns(due), std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> lock(core_->mutex);
         if (core_->stopping.load(std::memory_order_relaxed)) {
             state->cancelled.store(true, std::memory_order_relaxed);
             state->next_run_ns.store(0, std::memory_order_relaxed);
         } else {
-            core_->heap.push(detail::HeapEntry{due, gen, state, core_->seq++});
+            core_->heap.push(LSchedulerDetail::HeapEntry{due, gen, state, core_->seq++});
             core_->cv.notify_one();
         }
     }
     return LScheduledTask(std::move(state), core_);
 }
 
-inline void LScheduler::validate_interval(detail::steady_clock::duration iv) {
+inline void LScheduler::validate_interval(LSchedulerDetail::steady_clock::duration iv) {
     if (iv.count() <= 0) {
-        throw std::invalid_argument("LScheduler: interval 必须为正数");
+        throw std::invalid_argument("LScheduler interval must be positive");
     }
 }
 

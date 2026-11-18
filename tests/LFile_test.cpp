@@ -254,3 +254,25 @@ TEST_CASE("LFile atomic write preserves original file permissions", "[LFile]") {
     REQUIRE((st.st_mode & 07777) == (S_IRUSR | S_IWUSR));
 }
 #endif // !LTOOL_PLATFORM_WINDOWS
+
+TEST_CASE("LTempFile RAII removes or keeps temporary files", "[LFile]") {
+    std::filesystem::path removed_path;
+    {
+        LTempFile tf("lfile_raii_", ".txt");
+        removed_path = tf.path();
+        tf.file().write_text("temp payload");
+        REQUIRE(std::filesystem::exists(removed_path));
+        REQUIRE(LFile(removed_path).read_text() == "temp payload");
+    }
+    REQUIRE_FALSE(std::filesystem::exists(removed_path));
+
+    std::filesystem::path kept_path;
+    {
+        LTempFile tf("lfile_keep_", ".txt");
+        kept_path = tf.path();
+        tf.file().write_text("kept");
+        tf.keep();
+    }
+    REQUIRE(std::filesystem::exists(kept_path));
+    std::filesystem::remove(kept_path);
+}

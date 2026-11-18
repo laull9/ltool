@@ -9,12 +9,13 @@
 #ifndef LTOOL_LWEB_DETAIL_HTTPCLIENT_HPP
 #define LTOOL_LWEB_DETAIL_HTTPCLIENT_HPP
 
+#include <chrono>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include "detail/LWeb/Types.hpp"
+#include "Types.hpp"
 
 namespace LWeb {
 
@@ -33,6 +34,22 @@ public:
     /// `Authorization: Bearer <token>`（显式传入的 Authorization 头优先）。
     void SetBearerToken(std::string token) {
         bearer_token_ = std::move(token);
+    }
+
+    /// 设置连接与请求超时时间（同时作用于建连与读写请求阶段）。
+    void SetTimeout(std::chrono::steady_clock::duration timeout) {
+        client_.set_conn_timeout(timeout);
+        client_.set_req_timeout(timeout);
+    }
+
+    /// 单独设置连接超时时间。
+    void SetConnectTimeout(std::chrono::steady_clock::duration timeout) {
+        client_.set_conn_timeout(timeout);
+    }
+
+    /// 单独设置单次请求读写超时时间。
+    void SetRequestTimeout(std::chrono::steady_clock::duration timeout) {
+        client_.set_req_timeout(timeout);
     }
 
     /// 原始 Cinatra 客户端（逃生通道）。

@@ -211,40 +211,68 @@ inline std::string expand_vars(const std::string& value,
     return out;
 }
 
-/// 反转义双引号字符串中的 \n \r \t 等转义序列。
-inline std::string unescape_double_quoted(const std::string& value) {
+/// 反转义双引号字符串中的 \n \r \t 等转义序列，并在需要时展开未转义的 ${KEY}/$KEY。
+inline std::string unescape_and_expand_double_quoted(
+    const std::string& value, bool expand,
+    const std::map<std::string, std::string>& values) {
     std::string out;
     out.reserve(value.size());
     for (std::size_t i = 0; i < value.size(); ++i) {
-        if (value[i] != '\\' || i + 1 >= value.size()) {
-            out.push_back(value[i]);
+        if (value[i] == '\\' && i + 1 < value.size()) {
+            const char next = value[++i];
+            switch (next) {
+            case 'n':
+                out.push_back('\n');
+                break;
+            case 'r':
+                out.push_back('\r');
+                break;
+            case 't':
+                out.push_back('\t');
+                break;
+            case '"':
+            case '\'':
+            case '\\':
+            case '$':
+                out.push_back(next);
+                break;
+            default:
+                out.push_back('\\');
+                out.push_back(next);
+                break;
+            }
             continue;
         }
 
-        const char next = value[++i];
-        switch (next) {
-        case 'n':
-            out.push_back('\n');
-            break;
-        case 'r':
-            out.push_back('\r');
-            break;
-        case 't':
-            out.push_back('\t');
-            break;
-        case '"':
-        case '\'':
-        case '\\':
-        case '$':
-            out.push_back(next);
-            break;
-        default:
-            out.push_back('\\');
-            out.push_back(next);
-            break;
+        if (expand && value[i] == '$') {
+            if (i + 1 < value.size() && value[i + 1] == '{') {
+                const std::size_t end = value.find('}', i + 2);
+                if (end != std::string::npos) {
+                    out += lookup_value(values, value.substr(i + 2, end - i - 2));
+                    i = end;
+                    continue;
+                }
+            } else if (i + 1 < value.size() && is_name_first(value[i + 1])) {
+                const std::size_t begin = i + 1;
+                std::size_t end = begin + 1;
+                while (end < value.size() && is_expand_name_char(value[end])) {
+                    ++end;
+                }
+                out += lookup_value(values, value.substr(begin, end - begin));
+                i = end - 1;
+                continue;
+            }
         }
+
+        out.push_back(value[i]);
     }
     return out;
+}
+
+/// 反转义双引号字符串中的 \n \r \t 等转义序列。
+inline std::string unescape_double_quoted(const std::string& value) {
+    static const std::map<std::string, std::string> empty_map;
+    return unescape_and_expand_double_quoted(value, false, empty_map);
 }
 
 /// 解析未加引号的值：遇到行尾注释（#）截断，并移除尾部空白。
@@ -264,7 +292,9 @@ inline std::string parse_unquoted_value(const std::string& text) {
 
 /// 解析单引号或双引号包裹的值；引号后有多余内容或缺少闭合引号会抛异常。
 inline std::string parse_quoted_value(const std::string& text, std::size_t line,
-                                      const std::string& source) {
+                                      const std::string& source,
+                                      bool expand = false,
+                                      const std::map<std::string, std::string>* values = nullptr) {
     const char quote = text[0];
     std::string inner;
     bool escaped = false;
@@ -281,7 +311,12 @@ inline std::string parse_quoted_value(const std::string& text, std::size_t line,
             if (!tail.empty() && tail[0] != '#') {
                 throw parse_error(source, line, "unexpected text after quoted value");
             }
-            return quote == '"' ? unescape_double_quoted(inner) : inner;
+            if (quote == '"') {
+                static const std::map<std::string, std::string> empty_map;
+                return unescape_and_expand_double_quoted(inner, expand,
+                                                         values ? *values : empty_map);
+            }
+            return expand && values ? expand_vars(inner, *values) : inner;
         }
         escaped = false;
         inner.push_back(ch);
@@ -300,8 +335,10 @@ public:
     using map_type = std::map<std::string, std::string>;
     using const_iterator = map_type::const_iterator;
 
+    /// 默认构造空配置集合。
     LEnv() = default;
 
+    /// 从已有键值对映射构造配置集合。
     explicit LEnv(map_type values)
         : values_(std::move(values)) {}
 
@@ -417,22 +454,27 @@ public:
         return true;
     }
 
+    /// 返回内部配置映射的只读引用。
     const map_type& values() const noexcept {
         return values_;
     }
 
+    /// 返回配置项数量。
     std::size_t size() const noexcept {
         return values_.size();
     }
 
+    /// 判断配置集合是否为空。
     bool empty() const noexcept {
         return values_.empty();
     }
 
+    /// 返回只读起始迭代器。
     const_iterator begin() const noexcept {
         return values_.begin();
     }
 
+    /// 返回只读结束迭代器。
     const_iterator end() const noexcept {
         return values_.end();
     }
@@ -511,20 +553,18 @@ private:
             throw LEnvDetail::parse_error(source, line_no, "invalid key: " + key);
         }
 
-        // 按引号/非引号两种方式解析值。
+        // 按引号/非引号两种方式解析值（双引号内直接按转义感知方式展开）。
         std::string raw = LEnvDetail::ltrim(line.substr(eq + 1));
         std::string value;
         if (raw.empty()) {
             value.clear();
         } else if (raw[0] == '\'' || raw[0] == '"') {
-            value = LEnvDetail::parse_quoted_value(raw, line_no, source);
+            value = LEnvDetail::parse_quoted_value(raw, line_no, source, options.expand, &values_);
         } else {
             value = LEnvDetail::parse_unquoted_value(raw);
-        }
-
-        // 按选项展开 ${VAR}/$VAR 引用。
-        if (options.expand) {
-            value = LEnvDetail::expand_vars(value, values_);
+            if (options.expand) {
+                value = LEnvDetail::expand_vars(value, values_);
+            }
         }
         values_[std::move(key)] = std::move(value);
     }
@@ -533,7 +573,8 @@ private:
 };
 
 namespace LTool {
-using Env = ::LEnv;
+using Env = ::LEnv;               ///< dotenv 配置集合别名。
+using EnvOptions = ::LEnvOptions; ///< dotenv 加载选项别名。
 } // namespace LTool
 
 #endif // LTOOL_LENV_INCLUDE

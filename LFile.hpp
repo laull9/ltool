@@ -35,8 +35,8 @@
  * @endcode
  */
 
-#ifndef LFILE_INCLUDE
-#define LFILE_INCLUDE
+#ifndef LTOOL_LFILE_INCLUDE
+#define LTOOL_LFILE_INCLUDE
 
 #include "detail/LConcepts.hpp"
 #include "detail/LSha256.hpp"
@@ -75,7 +75,8 @@ enum class LFileWriteMode {
 class LFile;
 
 namespace fmt {
-template<typename Char>
+/// fmt 格式化器前置声明。
+template<class Char>
 struct formatter<LFile, Char, void> : formatter<std::filesystem::path, Char> {
     template<class FormatContext>
     typename FormatContext::iterator format(const LFile& value, FormatContext& ctx) const;
@@ -1248,13 +1249,99 @@ public:
     }
 };
 
+/**
+ * @brief RAII 临时文件守卫：构造时创建唯一临时文件，析构时自动删除。
+ */
+class LTempFile {
+public:
+    /// 在系统临时目录下创建唯一临时文件。
+    explicit LTempFile(LStringDetail::string_view prefix = "LFile-",
+                       LStringDetail::string_view extension = ".tmp")
+        : file_(LFile::create_temp_file(prefix, extension)) {}
+
+    LTempFile(const LTempFile&) = delete;
+    LTempFile& operator=(const LTempFile&) = delete;
+
+    /// 移动构造：接管临时文件所有权。
+    LTempFile(LTempFile&& other) noexcept
+        : file_(std::move(other.file_))
+        , keep_(other.keep_) {
+        other.keep_ = true;
+    }
+
+    /// 移动赋值：清理当前文件后接管新文件。
+    LTempFile& operator=(LTempFile&& other) noexcept {
+        if (this != &other) {
+            cleanup();
+            file_ = std::move(other.file_);
+            keep_ = other.keep_;
+            other.keep_ = true;
+        }
+        return *this;
+    }
+
+    /// 析构：若未调用 keep() 或 release()，则自动删除该临时文件。
+    ~LTempFile() {
+        cleanup();
+    }
+
+    /// 获取对应的 LFile 对象引用（可变版本）。
+    [[nodiscard]] LFile& file() noexcept {
+        return file_;
+    }
+
+    /// 获取对应的 LFile 对象引用（只读版本）。
+    [[nodiscard]] const LFile& file() const noexcept {
+        return file_;
+    }
+
+    /// 获取文件路径对象。
+    [[nodiscard]] const std::filesystem::path& path() const noexcept {
+        return file_.path();
+    }
+
+    /// 获取字符串形式的文件路径。
+    [[nodiscard]] std::string string() const {
+        return file_.string();
+    }
+
+    /// 禁止析构时自动删除该临时文件。
+    void keep(bool enabled = true) noexcept {
+        keep_ = enabled;
+    }
+
+    /// 放弃所有权并保留文件，返回对应的 LFile。
+    [[nodiscard]] LFile release() noexcept {
+        keep_ = true;
+        return file_;
+    }
+
+private:
+    void cleanup() noexcept {
+        if (!keep_ && !file_.path().empty()) {
+            std::error_code ec;
+            std::filesystem::remove(file_.path(), ec);
+        }
+    }
+
+    LFile file_;
+    bool keep_ = false;
+};
+
+namespace LTool {
+using File = ::LFile;                   ///< 文件读写对象别名。
+using FileWriteMode = ::LFileWriteMode; ///< 文件写入模式枚举别名。
+using TempFile = ::LTempFile;           ///< 临时文件 RAII 守卫别名。
+} // namespace LTool
+
 /// 用户自定义字面量，用于从字符串字面量简洁构造 LFile。
 inline LFile operator""_lf(const char* text, std::size_t size) {
     return LFile(std::filesystem::path(std::string(text, size)));
 }
 
+/// fmt 格式化器实现：LFile 复用 std::filesystem::path 的格式化规则。
 namespace fmt {
-template<typename Char>
+template<class Char>
 template<class FormatContext>
 typename FormatContext::iterator formatter<LFile, Char, void>::format(
     const LFile& value, FormatContext& ctx) const {
@@ -1262,11 +1349,25 @@ typename FormatContext::iterator formatter<LFile, Char, void>::format(
 }
 } // namespace fmt
 
+#if LTOOL_HAS_STD_FORMAT
+/// std::format 格式化器：LFile 按字符串路径输出。
+template<>
+struct std::formatter<LFile, char> : std::formatter<std::string, char> {
+    /// 将 LFile 路径写入 std::format 输出上下文。
+    template<class FormatContext>
+    auto format(const LFile& value, FormatContext& ctx) const {
+        return std::formatter<std::string, char>::format(value.string(), ctx);
+    }
+};
+#endif // LTOOL_HAS_STD_FORMAT
+
+/// std::hash 特化，使 LFile 可用于无序容器。
 template<>
 struct std::hash<LFile> {
+    /// 按 LFile 的路径求哈希。
     std::size_t operator()(const LFile& value) const noexcept {
         return value.path_hash();
     }
 };
 
-#endif // LFILE_INCLUDE
+#endif // LTOOL_LFILE_INCLUDE

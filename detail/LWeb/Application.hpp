@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-#include "detail/LWeb/Router.hpp"
+#include "Router.hpp"
 
 namespace LWeb {
 
@@ -177,6 +177,14 @@ public:
         router_.Any(path, object, method, std::forward<Aspects>(aspects)...);
     }
 
+    /// 挂载静态文件目录服务。
+    template <typename... Aspects>
+    void Static(std::string_view uri_prefix, std::filesystem::path root_dir,
+                Aspects&&... aspects) {
+        router_.Static(uri_prefix, std::move(root_dir),
+                       std::forward<Aspects>(aspects)...);
+    }
+
     /// 注册 Controller：转发到根路由。注意根路由无中间件；
     /// Controller 中间件在 Register 内部通过 r.Use(...) 声明；
     /// 若要挂到带中间件的 Group 下，用该 Group 的 AddController（Register
@@ -217,6 +225,9 @@ public:
     void Stop() { server_.stop(); }
 
     /// 实际监听端口（port=0 时为系统分配值）。
+    uint16_t Port() const { return server_.port(); }
+
+    /// Port() 的兼容别名。
     uint16_t port() const { return server_.port(); }
 
     /// 原始 Cinatra 服务对象（逃生通道）。

@@ -182,8 +182,7 @@ public:
 
     /// 丢弃尚未开始执行的排队任务。
     void purge() {
-        // purge() discards queued work. Do not wait on futures returned for
-        // discarded tasks: BS_thread_pool cannot complete those shared states.
+        // purge() 会丢弃排队中的任务；切勿等待已丢弃任务的 future（共享状态无法完成）。
         pool_.purge();
     }
 
@@ -229,6 +228,8 @@ using LPauseThreadPool = BasicLThreadPool<BS::tp::pause>;
 using LWaitDeadlockThreadPool = BasicLThreadPool<BS::tp::wait_deadlock_checks>;
 
 namespace LTool {
+template<BS::tp Flags = BS::tp::none>
+using BasicThreadPool = ::BasicLThreadPool<Flags>;        ///< 通用线程池模板别名。
 using ThreadPool = ::LThreadPool;                         ///< 线程池别名。
 using PriorityThreadPool = ::LPriorityThreadPool;         ///< 优先级线程池别名。
 using PauseThreadPool = ::LPauseThreadPool;               ///< 可暂停线程池别名。

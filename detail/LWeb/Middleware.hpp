@@ -26,8 +26,8 @@
 #include <string>
 #include <string_view>
 
-#include "detail/LWeb/Request.hpp"
-#include "detail/LWeb/Response.hpp"
+#include "Request.hpp"
+#include "Response.hpp"
 
 namespace LWeb {
 namespace middleware {
@@ -100,12 +100,27 @@ struct BearerAuth {
 
     bool before(Request& req, Response& res) {
         auto auth = req.get_header_value("Authorization");
-        if (auth.size() < 8 || auth.substr(0, 7) != "Bearer ") {
+        constexpr std::string_view prefix = "Bearer ";
+        if (auth.size() <= prefix.size()) {
             Unauthorized(res, "missing bearer token");
             return false;
         }
-        auto token = auth.substr(7);
-        if (verify && !verify(token)) {
+        for (std::size_t i = 0; i < prefix.size(); ++i) {
+            auto a = static_cast<unsigned char>(auth[i]);
+            auto b = static_cast<unsigned char>(prefix[i]);
+            if (a >= 'A' && a <= 'Z') {
+                a += 32;
+            }
+            if (b >= 'A' && b <= 'Z') {
+                b += 32;
+            }
+            if (a != b) {
+                Unauthorized(res, "missing bearer token");
+                return false;
+            }
+        }
+        auto token = auth.substr(prefix.size());
+        if (!verify || !verify(token)) {
             Unauthorized(res, "invalid bearer token");
             return false;
         }

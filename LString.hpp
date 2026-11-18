@@ -49,8 +49,8 @@
  * @endcode
  */
 
-#ifndef LSTRING_INCLUDE
-#define LSTRING_INCLUDE
+#ifndef LTOOL_LSTRING_INCLUDE
+#define LTOOL_LSTRING_INCLUDE
 
 #include "detail/LToolConfig.hpp"
 #include "detail/LConcepts.hpp"
@@ -82,10 +82,9 @@
 
 class LString;
 
-// Declare the formatter before LString's constrained conversion constructors.
-// fmt::is_formattable<LString, char> may otherwise instantiate the primary
-// formatter first, which makes the specialization at the end of this header
-// ill-formed on Clang/clang-cl.
+// 在 LString 的受约束转换构造函数之前前置声明 formatter；
+// 否则 fmt::is_formattable<LString, char> 可能先实例化主模板，导致 Clang/clang-cl
+// 下文件末尾的特化出现编译错误。
 template<>
 struct fmt::formatter<LString> : fmt::formatter<fmt::string_view> {
     template<class FormatContext>
@@ -130,7 +129,7 @@ struct fmt::formatter<LString> : fmt::formatter<fmt::string_view> {
 #endif // LTOOL_HAS_MAGIC_ENUM
 #define LSTRING_HAS_MAGIC_ENUM LTOOL_HAS_MAGIC_ENUM
 
-#if defined(_WIN32)
+#if LTOOL_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif // !WIN32_LEAN_AND_MEAN
@@ -140,7 +139,7 @@ struct fmt::formatter<LString> : fmt::formatter<fmt::string_view> {
 #include <windows.h>
 #elif LTOOL_HAS_ICONV
 #include <iconv.h>
-#endif // defined(_WIN32)
+#endif // LTOOL_PLATFORM_WINDOWS
 #define LSTRING_HAS_ICONV LTOOL_HAS_ICONV
 
 #if LTOOL_HAS_RE2
@@ -345,18 +344,8 @@ public:
 };
 #endif // LTOOL_HAS_CPP17
 
-#if LTOOL_HAS_CPP20
-template<class T>
-using remove_cvref_t = std::remove_cvref_t<T>;
-#else
-template<class T>
-struct remove_cvref {
-    using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
-};
-
-template<class T>
-using remove_cvref_t = typename remove_cvref<T>::type;
-#endif // LTOOL_HAS_CPP20
+using LTool::traits::remove_cvref;
+using LTool::traits::remove_cvref_t;
 
 template<class T, class = void>
 struct is_char_iterator : std::false_type {};
@@ -765,7 +754,7 @@ inline bool is_legacy_chinese_encoding(LEncoding encoding) noexcept {
     return encoding == LEncoding::Gbk || encoding == LEncoding::Gb2312;
 }
 
-#if defined(_WIN32)
+#if LTOOL_PLATFORM_WINDOWS
 
 /// 将中文传统编码映射到 Windows 代码页编号。
 inline unsigned int windows_code_page(LEncoding encoding) {
@@ -942,7 +931,7 @@ inline std::string iconv_convert(LStringDetail::string_view input, const char* f
 #endif // LSTRING_HAS_ICONV
 }
 
-#endif // defined(_WIN32)
+#endif // LTOOL_PLATFORM_WINDOWS
 
 /// 将平台宽字符串视图转换为 UTF-8。
 inline std::string wide_to_utf8(LStringDetail::wstring_view value, bool strict) {
@@ -991,12 +980,12 @@ inline std::string legacy_to_utf8(LStringDetail::string_view input, LEncoding en
         throw std::invalid_argument("encoding is not GBK/GB2312");
     }
 
-#if defined(_WIN32)
+#if LTOOL_PLATFORM_WINDOWS
     auto wide = multibyte_to_wide(input, windows_code_page(encoding), strict);
     return wide_to_utf8(wide, strict);
 #else
     return iconv_convert(input, iconv_name(encoding), "UTF-8", strict);
-#endif // defined(_WIN32)
+#endif // LTOOL_PLATFORM_WINDOWS
 }
 
 /// 使用当前平台后端将 UTF-8 字节转换为 GBK/GB2312。
@@ -1005,12 +994,12 @@ inline std::string utf8_to_legacy(LStringDetail::string_view input, LEncoding en
         throw std::invalid_argument("encoding is not GBK/GB2312");
     }
 
-#if defined(_WIN32)
+#if LTOOL_PLATFORM_WINDOWS
     auto wide = multibyte_to_wide(input, CP_UTF8, strict);
     return wide_to_multibyte(wide, windows_code_page(encoding), strict);
 #else
     return iconv_convert(input, "UTF-8", iconv_name(encoding), strict);
-#endif // defined(_WIN32)
+#endif // LTOOL_PLATFORM_WINDOWS
 }
 
 /// 探测字节是否可以按某个中文传统编码解码。
@@ -1076,6 +1065,256 @@ inline std::array<unsigned char, 32> sha256_digest(LStringDetail::string_view in
 /// 将 SHA-256 的 32 字节摘要转换为小写十六进制文本。
 inline std::string sha256_hex(LStringDetail::string_view input) {
     return LTool::detail::sha256_hex(input.data(), input.size());
+}
+
+/// 计算 HMAC-SHA256 的 32 字节摘要。
+inline std::array<unsigned char, 32> hmac_sha256_digest(LStringDetail::string_view key,
+                                                        LStringDetail::string_view data) {
+    return LTool::detail::hmac_sha256_digest(key.data(), key.size(), data.data(), data.size());
+}
+
+/// 将 HMAC-SHA256 的 32 字节摘要转换为小写十六进制文本。
+inline std::string hmac_sha256_hex(LStringDetail::string_view key, LStringDetail::string_view data) {
+    return LTool::detail::hmac_sha256_hex(key.data(), key.size(), data.data(), data.size());
+}
+
+/// 将字节编码为十六进制文本（默认小写，uppercase=true 为大写）。
+inline std::string hex_encode(LStringDetail::string_view bytes, bool uppercase = false) {
+    static const char kLower[] = "0123456789abcdef";
+    static const char kUpper[] = "0123456789ABCDEF";
+    const char* table = uppercase ? kUpper : kLower;
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+        unsigned char b = static_cast<unsigned char>(bytes[i]);
+        out.push_back(table[(b >> 4) & 0x0F]);
+        out.push_back(table[b & 0x0F]);
+    }
+    return out;
+}
+
+/// 将单个十六进制字符转为 0~15；非法字符返回 -1。
+inline int hex_nibble(char ch) noexcept {
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    return -1;
+}
+
+/// 解码十六进制文本为原始字节（允许可选 "0x"/"0X" 前缀；strict=true 遇奇数长度或非法字符抛异常）。
+inline std::string hex_decode(LStringDetail::string_view hex, bool strict = true) {
+    if (hex.size() >= 2 && hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) {
+        hex.remove_prefix(2);
+    }
+    std::string cleaned;
+    cleaned.reserve(hex.size());
+    for (std::size_t i = 0; i < hex.size(); ++i) {
+        char ch = hex[i];
+        if (!strict && (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == ':' || ch == '-')) {
+            continue;
+        }
+        cleaned.push_back(ch);
+    }
+    if (cleaned.size() % 2 != 0) {
+        if (strict) {
+            throw std::runtime_error("invalid hex string length");
+        }
+        cleaned.pop_back();
+    }
+    std::string out;
+    out.reserve(cleaned.size() / 2);
+    for (std::size_t i = 0; i < cleaned.size(); i += 2) {
+        int hi = hex_nibble(cleaned[i]);
+        int lo = hex_nibble(cleaned[i + 1]);
+        if (hi < 0 || lo < 0) {
+            if (strict) {
+                throw std::runtime_error("invalid hex character");
+            }
+            hi = (hi < 0) ? 0 : hi;
+            lo = (lo < 0) ? 0 : lo;
+        }
+        out.push_back(static_cast<char>((hi << 4) | lo));
+    }
+    return out;
+}
+
+/// 将字节编码为 Base64URL 文本（无 '=' 填充，使用 '-' 和 '_'）。
+inline std::string base64url_encode(LStringDetail::string_view bytes, bool keep_padding = false) {
+    std::string out = base64_encode(bytes);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        if (out[i] == '+') {
+            out[i] = '-';
+        } else if (out[i] == '/') {
+            out[i] = '_';
+        }
+    }
+    if (!keep_padding) {
+        while (!out.empty() && out.back() == '=') {
+            out.pop_back();
+        }
+    }
+    return out;
+}
+
+/// 解码 Base64URL（或标准 Base64）文本。
+inline std::string base64url_decode(LStringDetail::string_view encoded, bool strict = true) {
+    std::string normalized;
+    normalized.reserve(encoded.size() + 4);
+    for (std::size_t i = 0; i < encoded.size(); ++i) {
+        char ch = encoded[i];
+        if (ch == '-') {
+            normalized.push_back('+');
+        } else if (ch == '_') {
+            normalized.push_back('/');
+        } else {
+            normalized.push_back(ch);
+        }
+    }
+    return base64_decode(normalized, strict);
+}
+
+/// URL 百分号编码（RFC 3986 非保留字符不编码；plus_for_space=true 时空格编为 '+'）。
+inline std::string url_encode(LStringDetail::string_view text, bool plus_for_space = false) {
+    static const char kHex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(text[i]);
+        bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                          (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~';
+        if (unreserved) {
+            out.push_back(static_cast<char>(c));
+        } else if (plus_for_space && c == ' ') {
+            out.push_back('+');
+        } else {
+            out.push_back('%');
+            out.push_back(kHex[(c >> 4) & 0x0F]);
+            out.push_back(kHex[c & 0x0F]);
+        }
+    }
+    return out;
+}
+
+/// URL 百分号解码（plus_as_space=true 时将 '+' 解为空格）。
+inline std::string url_decode(LStringDetail::string_view text, bool plus_as_space = true) {
+    std::string out;
+    out.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        char ch = text[i];
+        if (plus_as_space && ch == '+') {
+            out.push_back(' ');
+        } else if (ch == '%' && i + 2 < text.size()) {
+            int hi = hex_nibble(text[i + 1]);
+            int lo = hex_nibble(text[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                out.push_back(static_cast<char>((hi << 4) | lo));
+                i += 2;
+            } else {
+                out.push_back(ch);
+            }
+        } else {
+            out.push_back(ch);
+        }
+    }
+    return out;
+}
+
+/// 读取一个 UTF-8 码点并推进 offset；遇到无效字节序列时回退为 U+FFFD 并推进至少 1 字节。
+inline std::uint32_t utf8_next_codepoint(LStringDetail::string_view text, std::size_t& offset) noexcept {
+    if (offset >= text.size()) {
+        return 0;
+    }
+    unsigned char b0 = static_cast<unsigned char>(text[offset]);
+    if (b0 < 0x80) {
+        ++offset;
+        return b0;
+    }
+    if ((b0 >> 5) == 0x06 && offset + 1 < text.size()) {
+        unsigned char b1 = static_cast<unsigned char>(text[offset + 1]);
+        if ((b1 & 0xC0) == 0x80) {
+            std::uint32_t cp = (static_cast<std::uint32_t>(b0 & 0x1F) << 6) | (b1 & 0x3F);
+            if (cp >= 0x80) {
+                offset += 2;
+                return cp;
+            }
+        }
+    } else if ((b0 >> 4) == 0x0E && offset + 2 < text.size()) {
+        unsigned char b1 = static_cast<unsigned char>(text[offset + 1]);
+        unsigned char b2 = static_cast<unsigned char>(text[offset + 2]);
+        if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80) {
+            std::uint32_t cp = (static_cast<std::uint32_t>(b0 & 0x0F) << 12) |
+                               (static_cast<std::uint32_t>(b1 & 0x3F) << 6) | (b2 & 0x3F);
+            if (cp >= 0x800 && !(cp >= 0xD800 && cp <= 0xDFFF)) {
+                offset += 3;
+                return cp;
+            }
+        }
+    } else if ((b0 >> 3) == 0x1E && offset + 3 < text.size()) {
+        unsigned char b1 = static_cast<unsigned char>(text[offset + 1]);
+        unsigned char b2 = static_cast<unsigned char>(text[offset + 2]);
+        unsigned char b3 = static_cast<unsigned char>(text[offset + 3]);
+        if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80 && (b3 & 0xC0) == 0x80) {
+            std::uint32_t cp = (static_cast<std::uint32_t>(b0 & 0x07) << 18) |
+                               (static_cast<std::uint32_t>(b1 & 0x3F) << 12) |
+                               (static_cast<std::uint32_t>(b2 & 0x3F) << 6) | (b3 & 0x3F);
+            if (cp >= 0x10000 && cp <= 0x10FFFF) {
+                offset += 4;
+                return cp;
+            }
+        }
+    }
+    ++offset;
+    return 0xFFFD;
+}
+
+/// 统计 UTF-8 字符（Unicode 码点）数量。
+inline std::size_t utf8_length(LStringDetail::string_view text) noexcept {
+    std::size_t offset = 0;
+    std::size_t count = 0;
+    while (offset < text.size()) {
+        utf8_next_codepoint(text, offset);
+        ++count;
+    }
+    return count;
+}
+
+/// 将 UTF-8 字符串解码为 Unicode 码点列表。
+inline std::vector<std::uint32_t> utf8_codepoints(LStringDetail::string_view text) {
+    std::vector<std::uint32_t> out;
+    std::size_t offset = 0;
+    while (offset < text.size()) {
+        out.push_back(utf8_next_codepoint(text, offset));
+    }
+    return out;
+}
+
+/// 按最大 UTF-8 码点数量截断文本（不会截断半个多字节字符），超出时可选追加省略号。
+inline std::string utf8_truncate(LStringDetail::string_view text,
+                                 std::size_t max_chars,
+                                 LStringDetail::string_view ellipsis = LStringDetail::string_view()) {
+    std::size_t total = utf8_length(text);
+    if (total <= max_chars) {
+        return std::string(text.data(), text.size());
+    }
+    std::size_t ellipsis_chars = utf8_length(ellipsis);
+    std::size_t keep_chars = (max_chars > ellipsis_chars) ? (max_chars - ellipsis_chars) : 0;
+    std::size_t offset = 0;
+    std::size_t count = 0;
+    while (offset < text.size() && count < keep_chars) {
+        utf8_next_codepoint(text, offset);
+        ++count;
+    }
+    std::string out(text.data(), offset);
+    if (ellipsis_chars > 0 && max_chars >= ellipsis_chars) {
+        out.append(ellipsis.data(), ellipsis.size());
+    }
+    return out;
 }
 
 /// 将 std::string 适配为 string_view，供通用拼接类 API 使用。
@@ -1889,11 +2128,21 @@ public:
 
         const std::string from_copy(from.data(), from.size());
         const std::string to_copy(to.data(), to.size());
+        std::string out;
         size_type pos = 0;
-        while ((pos = data_.find(from_copy, pos)) != npos) {
-            data_.replace(pos, from_copy.size(), to_copy);
-            pos += to_copy.size();
+        size_type found = data_.find(from_copy, pos);
+        if (found == npos) {
+            return *this;
         }
+        out.reserve(data_.size());
+        do {
+            out.append(data_, pos, found - pos);
+            out.append(to_copy);
+            pos = found + from_copy.size();
+            found = data_.find(from_copy, pos);
+        } while (found != npos);
+        out.append(data_, pos, data_.size() - pos);
+        data_ = std::move(out);
         return *this;
     }
 
@@ -2507,21 +2756,30 @@ public:
         auto input = LStringDetail::trim_bom(bytes, encoding);
         switch (encoding) {
         case LEncoding::Ascii: {
-            for (char ch : input) {
-                if (static_cast<unsigned char>(ch) > 0x7F) {
-                    if (strict) {
+            if (strict) {
+                for (char ch : input) {
+                    if (static_cast<unsigned char>(ch) > 0x7F) {
                         throw std::runtime_error("non-ASCII byte in ASCII input");
                     }
                 }
+                return std::string(input);
             }
-            return std::string(input);
+            std::string out;
+            out.reserve(input.size());
+            for (char ch : input) {
+                out.push_back(static_cast<unsigned char>(ch) > 0x7F ? '?' : ch);
+            }
+            return out;
         }
         case LEncoding::Utf8:
         case LEncoding::Utf8Bom:
-            if (strict && !valid_utf8(input)) {
-                throw std::runtime_error("invalid UTF-8 input");
+            if (strict) {
+                if (!valid_utf8(input)) {
+                    throw std::runtime_error("invalid UTF-8 input");
+                }
+                return std::string(input);
             }
-            return LStringDetail::encode_utf8(LStringDetail::decode_utf8(input, strict));
+            return LStringDetail::encode_utf8(LStringDetail::decode_utf8(input, false));
         case LEncoding::Utf16Le:
             return LStringDetail::encode_utf8(LStringDetail::decode_utf16(input, true, strict));
         case LEncoding::Utf16Be:
@@ -2809,6 +3067,12 @@ public:
         re2::StringPiece match;
         while (RE2::FindAndConsume(&input, re, &match)) {
             out.emplace_back(LStringDetail::string_view(match.data(), match.size()));
+            if (match.empty()) {
+                if (input.empty()) {
+                    break;
+                }
+                input.remove_prefix(1);
+            }
         }
 #else
         std::regex re {std::string(pattern)};
@@ -2923,6 +3187,110 @@ public:
         return LStringDetail::sha256_digest(bytes);
     }
 
+    /// 计算当前存储字节的 HMAC-SHA256 摘要，格式为 64 位小写十六进制文本。
+    LString hmac_sha256(LStringDetail::string_view key) const {
+        return LStringDetail::hmac_sha256_hex(key, view());
+    }
+
+    /// 计算当前存储字节的 32 字节 HMAC-SHA256 二进制摘要。
+    std::array<unsigned char, 32> hmac_sha256_digest(LStringDetail::string_view key) const {
+        return LStringDetail::hmac_sha256_digest(key, view());
+    }
+
+    /// 计算任意键与数据的 HMAC-SHA256 摘要，格式为 64 位小写十六进制文本。
+    static LString hmac_sha256(LStringDetail::string_view key, LStringDetail::string_view data) {
+        return LStringDetail::hmac_sha256_hex(key, data);
+    }
+
+    /// 计算任意键与数据的 32 字节 HMAC-SHA256 二进制摘要。
+    static std::array<unsigned char, 32> hmac_sha256_digest(LStringDetail::string_view key,
+                                                            LStringDetail::string_view data) {
+        return LStringDetail::hmac_sha256_digest(key, data);
+    }
+
+    /// 将当前存储字节编码为十六进制文本（默认小写，uppercase=true 为大写）。
+    LString hex_encoded(bool uppercase = false) const {
+        return LStringDetail::hex_encode(view(), uppercase);
+    }
+
+    /// 将当前内容按十六进制解码为原始字节。
+    LString hex_decoded(bool strict = true) const {
+        return LStringDetail::hex_decode(view(), strict);
+    }
+
+    /// 将任意字节编码为十六进制文本。
+    static LString hex_encode(LStringDetail::string_view bytes, bool uppercase = false) {
+        return LStringDetail::hex_encode(bytes, uppercase);
+    }
+
+    /// 将十六进制文本解码为原始字节。
+    static LString hex_decode(LStringDetail::string_view hex, bool strict = true) {
+        return LStringDetail::hex_decode(hex, strict);
+    }
+
+    /// 将当前存储字节编码为 Base64URL 文本。
+    LString base64url_encoded(bool keep_padding = false) const {
+        return LStringDetail::base64url_encode(view(), keep_padding);
+    }
+
+    /// 将当前内容按 Base64URL 文本解码为原始字节。
+    LString base64url_decoded(bool strict = true) const {
+        return LStringDetail::base64url_decode(view(), strict);
+    }
+
+    /// 将任意字节编码为 Base64URL 文本。
+    static LString base64url_encode(LStringDetail::string_view bytes, bool keep_padding = false) {
+        return LStringDetail::base64url_encode(bytes, keep_padding);
+    }
+
+    /// 将 Base64URL 文本解码为原始字节。
+    static LString base64url_decode(LStringDetail::string_view encoded, bool strict = true) {
+        return LStringDetail::base64url_decode(encoded, strict);
+    }
+
+    /// 将当前内容做 URL 百分号编码。
+    LString url_encoded(bool plus_for_space = false) const {
+        return LStringDetail::url_encode(view(), plus_for_space);
+    }
+
+    /// 将当前内容做 URL 百分号解码。
+    LString url_decoded(bool plus_as_space = true) const {
+        return LStringDetail::url_decode(view(), plus_as_space);
+    }
+
+    /// 对任意文本做 URL 百分号编码。
+    static LString url_encode(LStringDetail::string_view text, bool plus_for_space = false) {
+        return LStringDetail::url_encode(text, plus_for_space);
+    }
+
+    /// 对任意文本做 URL 百分号解码。
+    static LString url_decode(LStringDetail::string_view text, bool plus_as_space = true) {
+        return LStringDetail::url_decode(text, plus_as_space);
+    }
+
+    /// 统计当前文本的 UTF-8 码点（字符）数量。
+    std::size_t utf8_length() const noexcept {
+        return LStringDetail::utf8_length(view());
+    }
+
+    /// 返回当前文本的 Unicode 码点列表。
+    std::vector<std::uint32_t> utf8_codepoints() const {
+        return LStringDetail::utf8_codepoints(view());
+    }
+
+    /// 返回按 UTF-8 码点数量安全截断后的新 LString，超出时可选追加省略号。
+    LString utf8_truncated(std::size_t max_chars,
+                           LStringDetail::string_view ellipsis = LStringDetail::string_view()) const {
+        return LStringDetail::utf8_truncate(view(), max_chars, ellipsis);
+    }
+
+    /// 原地按 UTF-8 码点数量安全截断当前文本。
+    LString& utf8_truncate(std::size_t max_chars,
+                           LStringDetail::string_view ellipsis = LStringDetail::string_view()) {
+        data_ = LStringDetail::utf8_truncate(view(), max_chars, ellipsis);
+        return *this;
+    }
+
     /// 使用当前标准下可用的标准哈希器对存储字节求哈希。
     std::size_t hash() const noexcept {
 #if LTOOL_HAS_CPP17
@@ -2956,7 +3324,10 @@ struct Reflector<LString> {
 };
 } // namespace rfl
 
-/// PascalCase 别名，供偏好类型命名风格的代码使用。
+namespace LTool {
+using String = ::LString;     ///< 字符串类型别名。
+using Encoding = ::LEncoding; ///< 文本编码枚举别名。
+} // namespace LTool
 
 /// 用户自定义字面量，用于从字符串字面量简洁构造 LString。
 inline LString operator""_ls(const char* text, std::size_t size) {
@@ -2993,4 +3364,4 @@ struct std::hash<LString> {
     }
 };
 
-#endif // !LSTRING_INCLUDE
+#endif // !LTOOL_LSTRING_INCLUDE

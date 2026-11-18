@@ -79,8 +79,8 @@
 #define LJSON_HAS_RFL_YYJSON LTOOL_HAS_RFL_YYJSON
 #define LJSON_HAS_STD_FORMAT LTOOL_HAS_STD_FORMAT
 
-// Json's mutable DOM is intentionally implemented on yyjson. Other JSON
-// libraries below are interoperability adapters, not replacement backends.
+// Json 的可变 DOM 有意基于 yyjson 实现；下方其余 JSON 库仅作为互操作适配层，
+// 而非替代后端。
 #if !LJSON_HAS_YYJSON
 #error "LJson requires its yyjson DOM backend. Do not disable LTOOL_USE_YYJSON; make yyjson available instead."
 #endif
@@ -139,18 +139,9 @@ namespace detail {
 template<class>
 struct dependent_false : std::false_type {};
 
-/// 标准 void_t 别名。
-template<class...>
-using void_t = void;
-
-/// 剥除 cv 和引用后的类型。
-template<class T>
-struct remove_cvref {
-    using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
-};
-
-template<class T>
-using remove_cvref_t = typename remove_cvref<T>::type;
+using LTool::traits::void_t;
+using LTool::traits::remove_cvref;
+using LTool::traits::remove_cvref_t;
 
 /// 判断类型是否具备 data()/size() 文本缓冲形态。
 template<class T, class = void>
@@ -506,8 +497,7 @@ class Json {
     friend class JsonRef;
 
 private:
-    // Creating an array element at a distant index requires materializing all
-    // preceding null values. Keep that convenience operation bounded.
+    /// 在遥远下标处创建数组元素时必须补齐前置 null，限制该便捷操作的扩展上限。
     static constexpr std::size_t max_sparse_array_growth_ = 1024 * 1024; ///< 稀疏数组扩展上限。
 
     /// 当前节点与父节点的关系。
@@ -875,6 +865,8 @@ private:
                 }
                 value_ = value;
             }
+            // 注：yyjson_mut_obj_replace 原地把 value 的 tag/uni 拷贝进原槽位，
+            // 并不会把 value 指针挂入 parent_，因此成功时 value_ 仍指向原槽位。
         } else {
             clear_array_cache();
             if (!yyjson_mut_arr_replace(parent_, index_, value)) {
@@ -1659,9 +1651,7 @@ public:
         init_from_value_copy(value);
     }
 
-    // Best-effort borrowed text. It remains valid only until this Json is
-    // modified or destroyed; use to_string() when an owning result is needed.
-    /// 返回惰性同步的 JSON 文本引用；修改后可能失效。
+    /// 返回惰性同步的 JSON 文本引用；仅在下次修改或销毁前有效，需要独立副本请用 to_string()。
     const std::string& str() const noexcept {
         try {
             sync_text();
@@ -1705,8 +1695,7 @@ public:
         return str();
     }
 
-    // Returns an owning serialized snapshot and propagates serialization errors.
-    /// 返回拥有的序列化快照；序列化错误会抛出。
+    /// 返回拥有所有权的序列化快照；序列化错误会抛出。
     std::string to_string() const {
         return write_current();
     }
@@ -1734,7 +1723,7 @@ public:
 
     /// 序列化为文本；indent>0 时格式化输出。
     std::string dump(int indent = -1) const {
-        if (!value_) {
+        if (!value_ && !text_.empty()) {
             return indent > 0 ? detail::format_json_with_indent(text_, indent) : text_;
         }
         return write_current(indent);
