@@ -27,3 +27,27 @@ jobs:
           build/direct
           printf '#include "LString.hpp"\n' | c++ -std=c++11 -I. -x c++ -fsyntax-only -
           printf '#include "LWeb.hpp"\n' | c++ -std=c++20 -Ibuild/prefix/include/ltool -x c++ -E - -o /dev/null
+  linux-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y catch2 libjsoncpp-dev nlohmann-json3-dev g++-14
+      - run: cmake -S tests -B build/tests -G Ninja -DCMAKE_CXX_COMPILER=g++-14
+      - run: cmake --build build/tests --parallel 2
+      - run: ctest --test-dir build/tests --output-on-failure
+  module:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install llvm catch2 ninja
+      - run: cmake -S tests -B build/module -G Ninja -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" -DLTOOL_BUILD_MODULE=ON
+      - run: cmake --build build/module --target LModule_test
+      - run: ctest --test-dir build/module --output-on-failure
+  windows-process:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - run: vcpkg install catch2:x64-windows
+      - run: cmake -S tests -B build/tests -DLTOOL_PROCESS_TEST_ONLY=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - run: cmake --build build/tests --config Release --target LProcess_test
+      - run: ctest --test-dir build/tests -C Release --output-on-failure

@@ -527,7 +527,8 @@ private:
     mutable relation_kind relation_ = relation_kind::root;  ///< 与父节点的关系。
     mutable std::string key_;                               ///< 在父对象中的键。
     mutable std::size_t index_ = 0;                         ///< 在父数组中的下标。
-    mutable std::shared_ptr<bool> text_dirty_;              ///< 文本是否已修改。
+    mutable std::shared_ptr<std::uint64_t> revision_;              ///< 文档共享的修改序号。
+    mutable std::uint64_t cached_revision_ = 0; ///< 本对象文本对应的修改序号。
     mutable std::shared_ptr<array_index_cache> array_cache_; ///< 数组缓存。
     bool proxy_ = false;                                    ///< 是否为代理视图。
     bool valid_ = true;                                     ///< 是否引用有效值。
@@ -606,7 +607,8 @@ private:
           relation_(other.relation_),
           key_(other.key_),
           index_(other.index_),
-          text_dirty_(other.text_dirty_),
+          revision_(other.revision_),
+          cached_revision_(other.cached_revision_),
           array_cache_(other.array_cache_),
           proxy_(other.proxy_),
           valid_(other.valid_) {}
@@ -620,9 +622,6 @@ private:
         }
         if (other.value_) {
             init_from_value_copy(other.value_);
-            if (text_dirty_) {
-                *text_dirty_ = false;
-            }
         }
     }
 
@@ -633,7 +632,7 @@ private:
          relation_kind relation,
          std::string key,
          std::size_t index,
-         std::shared_ptr<bool> text_dirty,
+         std::shared_ptr<std::uint64_t> revision,
          std::shared_ptr<array_index_cache> array_cache,
          bool proxy)
         : doc_(std::move(doc)),
@@ -642,7 +641,7 @@ private:
           relation_(relation),
           key_(std::move(key)),
           index_(index),
-          text_dirty_(std::move(text_dirty)),
+          revision_(std::move(revision)),
           array_cache_(std::move(array_cache)),
           proxy_(proxy) {}
 
@@ -654,7 +653,8 @@ private:
         yyjson_mut_doc_set_root(doc_.get(), value_);
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
@@ -675,7 +675,8 @@ private:
         value_ = yyjson_mut_doc_get_root(doc_.get());
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
@@ -696,7 +697,8 @@ private:
         value_ = yyjson_mut_doc_get_root(doc_.get());
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
@@ -708,7 +710,8 @@ private:
         value_ = value ? yyjson_val_mut_copy(doc_.get(), value) : yyjson_mut_null(doc_.get());
         value_ = require_value(value_);
         yyjson_mut_doc_set_root(doc_.get(), value_);
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
@@ -719,7 +722,8 @@ private:
         value_ = value ? yyjson_mut_val_mut_copy(doc_.get(), value) : yyjson_mut_null(doc_.get());
         value_ = require_value(value_);
         yyjson_mut_doc_set_root(doc_.get(), value_);
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
@@ -728,9 +732,6 @@ private:
     void parse_text_now(JsonView text) {
         if (text.empty()) {
             init_root([](yyjson_mut_doc* target) { return yyjson_mut_null(target); });
-            if (text_dirty_) {
-                *text_dirty_ = false;
-            }
             return;
         }
 
@@ -757,7 +758,7 @@ private:
         }
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(false);
+        revision_ = std::make_shared<std::uint64_t>(1);
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
@@ -810,10 +811,10 @@ private:
 
     /// 标记文本已脏（下次读取需重新序列化）。
     void mark_dirty() {
-        if (!text_dirty_) {
-            text_dirty_ = std::make_shared<bool>(false);
+        if (!revision_) {
+            revision_ = std::make_shared<std::uint64_t>(1);
         }
-        *text_dirty_ = true;
+        ++*revision_;
     }
 
     /// 清空数组缓存。
@@ -832,14 +833,11 @@ private:
 
     /// 同步文本缓存为当前值序列化结果。
     void sync_text() const {
-        if (!value_) {
+        if (!value_ || (revision_ && cached_revision_ == *revision_)) {
             return;
         }
-
-        text_ = write_value(value_);
-        if (!proxy_ && text_dirty_) {
-            *text_dirty_ = false;
-        }
+        text_ = write_value(const_value());
+        if (revision_) cached_revision_ = *revision_;
     }
 
     /// 序列化当前节点；indent>0 时格式化。
@@ -895,7 +893,8 @@ private:
         yyjson_mut_doc_set_root(doc_.get(), value_);
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
@@ -1243,9 +1242,6 @@ private:
     Json make_detached_copy(yyjson_mut_val* value) const {
         Json out;
         out.init_from_value_copy(value);
-        if (out.text_dirty_) {
-            *out.text_dirty_ = true;
-        }
         return out;
     }
 
@@ -1378,7 +1374,7 @@ private:
     void for_each_recursive_impl(yyjson_mut_val* value, Visitor&& visitor) const {
         if constexpr (Borrow) {
             const Json view(doc_, value, nullptr, relation_kind::borrowed, {}, 0,
-                            text_dirty_, array_cache_, true);
+                            revision_, array_cache_, true);
             visitor(view);
         } else {
             visitor(make_detached_copy(value));
@@ -1442,7 +1438,8 @@ public:
         relation_ = other.relation_;
         key_ = std::move(other.key_);
         index_ = other.index_;
-        text_dirty_ = std::move(other.text_dirty_);
+        revision_ = std::move(other.revision_);
+        cached_revision_ = other.cached_revision_;
         array_cache_ = std::move(other.array_cache_);
         valid_ = other.valid_;
         other.value_ = nullptr;
@@ -1469,13 +1466,10 @@ public:
         }
         if (other.value_) {
             init_from_value_copy(other.value_);
-            if (text_dirty_) {
-                *text_dirty_ = false;
-            }
         } else {
             doc_.reset();
             value_ = nullptr;
-            text_dirty_.reset();
+            revision_.reset();
             array_cache_.reset();
         }
         parent_ = nullptr;
@@ -1506,7 +1500,8 @@ public:
         relation_ = other.relation_;
         key_ = std::move(other.key_);
         index_ = other.index_;
-        text_dirty_ = std::move(other.text_dirty_);
+        revision_ = std::move(other.revision_);
+        cached_revision_ = other.cached_revision_;
         array_cache_ = std::move(other.array_cache_);
         proxy_ = other.proxy_;
         valid_ = other.valid_;
@@ -1737,7 +1732,8 @@ public:
 
     /// 返回当前文本的零拷贝视图。
     JsonView view() const noexcept {
-        return JsonView(data(), size());
+        const auto& text = str();
+        return JsonView(text.data(), text.size());
     }
 
     /// 隐式转换为视图。
@@ -2467,7 +2463,7 @@ inline JsonRef Json::make_proxy(yyjson_mut_val* value,
                                 std::string key,
                                 std::size_t index) const {
     Json proxy(doc_, value, parent, relation, std::move(key), index,
-               text_dirty_, array_cache_, true);
+               revision_, array_cache_, true);
     return JsonRef(proxy, share_tag{});
 }
 

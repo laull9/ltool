@@ -177,6 +177,14 @@ inline LProcessResult run_windows(
         return result;
     }
 
+    // 匿名管道也是字节模式的命名管道。只将父进程的写端设为非阻塞。
+    DWORD pipe_mode = PIPE_NOWAIT;
+    if (!SetNamedPipeHandleState(stdin_write, &pipe_mode, nullptr, nullptr)) {
+        result.error = "cannot configure stdin pipe: " + std::to_string(GetLastError());
+        close_handles();
+        return result;
+    }
+
     if (!opts.merge_stderr) {
         if (!CreatePipe(&stderr_read, &stderr_write, &sa, 0) ||
             !SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0)) {
@@ -263,62 +271,52 @@ inline LProcessResult run_windows(
 
     result.started = true;
 
-    if (!opts.stdin_data.empty()) {
-        DWORD written = 0;
-        std::size_t offset = 0;
-        while (offset < opts.stdin_data.size()) {
-            DWORD chunk = static_cast<DWORD>((std::min<std::size_t>)(65536, opts.stdin_data.size() - offset));
-            if (!WriteFile(stdin_write, opts.stdin_data.data() + offset, chunk, &written, nullptr) || written == 0) {
-                break;
-            }
-            offset += written;
-        }
-    }
-    CloseHandle(stdin_write);
-    stdin_write = nullptr;
-
     const auto start = std::chrono::steady_clock::now();
+    std::size_t offset = 0;
+    // 仅读取本次快照中的字节，让大量连续输出也有机会检查截止时间。
     auto drain_pipe = [](HANDLE pipe, std::string& dst) {
-        DWORD avail = 0;
-        while (PeekNamedPipe(pipe, nullptr, 0, nullptr, &avail, nullptr) && avail > 0) {
-            char buf[4096];
-            DWORD read_bytes = 0;
-            if (!ReadFile(pipe, buf, static_cast<DWORD>(sizeof(buf)), &read_bytes, nullptr) || read_bytes == 0) {
-                break;
-            }
-            dst.append(buf, read_bytes);
+        DWORD available = 0;
+        if (!pipe || !PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)) return false;
+        const bool ready = available != 0;
+        while (available) {
+            char buffer[8192];
+            DWORD count = 0;
+            const DWORD chunk = (std::min)(available, static_cast<DWORD>(sizeof(buffer)));
+            if (!ReadFile(pipe, buffer, chunk, &count, nullptr) || !count) break;
+            dst.append(buffer, count);
+            available -= count;
         }
+        return ready;
     };
 
     for (;;) {
-        drain_pipe(stdout_read, result.stdout_text);
-        if (stderr_read) {
-            drain_pipe(stderr_read, result.stderr_text);
+        bool progress = drain_pipe(stdout_read, result.stdout_text);
+        if (drain_pipe(stderr_read, result.stderr_text)) progress = true;
+        if (stdin_write && offset < opts.stdin_data.size()) {
+            DWORD count = 0;
+            const DWORD chunk = static_cast<DWORD>((std::min<std::size_t>)(4096, opts.stdin_data.size() - offset));
+            if (WriteFile(stdin_write, opts.stdin_data.data() + offset, chunk, &count, nullptr)) {
+                offset += count;
+                progress = progress || count != 0;
+            } else if (GetLastError() != ERROR_NO_DATA) {
+                CloseHandle(stdin_write);
+                stdin_write = nullptr;
+            }
         }
-        DWORD wait_rc = WaitForSingleObject(pi.hProcess, 10);
-        if (wait_rc == WAIT_OBJECT_0) {
-            break;
+        if (stdin_write && offset == opts.stdin_data.size()) {
+            CloseHandle(stdin_write);
+            stdin_write = nullptr;
         }
-        if (opts.timeout.has_value() && std::chrono::steady_clock::now() - start >= *opts.timeout) {
+        if (WaitForSingleObject(pi.hProcess, progress ? 0 : 5) == WAIT_OBJECT_0) break;
+        if (opts.timeout && std::chrono::steady_clock::now() - start >= *opts.timeout) {
             result.timed_out = true;
             TerminateProcess(pi.hProcess, 1);
             WaitForSingleObject(pi.hProcess, 1000);
             break;
         }
     }
-
-    // 排空剩余输出
-    auto drain_eof = [](HANDLE pipe, std::string& dst) {
-        char buf[4096];
-        DWORD read_bytes = 0;
-        while (ReadFile(pipe, buf, static_cast<DWORD>(sizeof(buf)), &read_bytes, nullptr) && read_bytes > 0) {
-            dst.append(buf, read_bytes);
-        }
-    };
-    drain_eof(stdout_read, result.stdout_text);
-    if (stderr_read) {
-        drain_eof(stderr_read, result.stderr_text);
-    }
+    drain_pipe(stdout_read, result.stdout_text);
+    drain_pipe(stderr_read, result.stderr_text);
 
     DWORD code = 0;
     if (GetExitCodeProcess(pi.hProcess, &code)) {

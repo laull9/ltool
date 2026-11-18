@@ -5,6 +5,11 @@
 
 local ltool_root = path.join(os.scriptdir(), "..")
 
+target("ltool_process_child")
+    set_kind("binary")
+    add_files("process/child.cpp")
+target_end()
+
 for _, filepath in ipairs(os.files(path.join(os.scriptdir(), "*.cpp"))) do
     local name = path.basename(filepath)
 
@@ -19,6 +24,10 @@ for _, filepath in ipairs(os.files(path.join(os.scriptdir(), "*.cpp"))) do
             add_includedirs(ltool_root)
             add_includedirs(path.join(ltool_root, "pkgs/range-v3/include"))
             add_packages("catch2")
+
+            if name == "LProcess_test" then
+                add_deps("ltool_process_child")
+            end
 
             -- LJson 互操作适配器测试
             if name == "LJson_test" then
