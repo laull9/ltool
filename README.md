@@ -27,7 +27,9 @@
 ## 快速开始
 
 ```cpp
-#include "LTool.hpp"
+#include "LFile.hpp"
+#include "LLog.hpp"
+#include "Locked.hpp"
 
 #include <iostream>
 #include <vector>
@@ -60,6 +62,8 @@ c++ -std=c++20 -I. demo.cpp -o demo -liconv
 
 多数 Linux/glibc 环境可以省略 `-liconv`。如果只使用 `LString.hpp` 或 `LLog.hpp`，核心能力可在 C++11 下工作；`LPath.hpp` 和 `LFile.hpp` 需要 C++17 `std::filesystem`，`Locked.hpp` 使用了 C++20 concepts。
 
+手动编译默认使用内置 SHA-256；显式开启 OpenSSL 时同时添加 `-DLTOOL_USE_OPENSSL_SHA256=1 -lcrypto`。CMake 目标自动传递链接依赖。
+
 ## 文档索引
 
 | 模块 | 文档 | 入口头文件 |
@@ -71,6 +75,7 @@ c++ -std=c++20 -I. demo.cpp -o demo -liconv
 | 文件读写 | [LFile](docs/LFile.md) | `LFile.hpp` |
 | 随机数和 UUID | [LRandom](docs/LRandom.md) | `LRandom.hpp` |
 | 原生对话框 | [LDialog](docs/LDialog.md) | `LDialog.hpp` |
+| LRU / TTL 缓存 | 容量限制与过期策略 | `LLruCache.hpp` |
 | 加锁访问 | [Locked](docs/Locked.md) | `Locked.hpp` |
 | Web 应用层 | [LWeb](docs/LWeb.md) | `LWeb.hpp` |
 | ImGui facade | [LImGui](docs/LImGui.md) | `LImGui.hpp` |

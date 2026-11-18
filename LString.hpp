@@ -1110,7 +1110,7 @@ inline int hex_nibble(char ch) noexcept {
 /// 解码十六进制文本为原始字节（允许可选 "0x"/"0X" 前缀；strict=true 遇奇数长度或非法字符抛异常）。
 inline std::string hex_decode(LStringDetail::string_view hex, bool strict = true) {
     if (hex.size() >= 2 && hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) {
-        hex.remove_prefix(2);
+        hex = hex.substr(2);
     }
     std::string cleaned;
     cleaned.reserve(hex.size());

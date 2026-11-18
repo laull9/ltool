@@ -205,3 +205,16 @@ TEST_CASE("模块导出 LResult、LDateTime、LCli、LProcess、LChannel、LTemp
     (void)rot_sink;
     SUCCEED();
 }
+
+TEST_CASE("模块用户可以整理 JSON、借用遍历与配置行输出") {
+    auto root = LJson::parse("[1,2]");
+    root.compact();
+    int count = 0;
+    root.for_each_view([&](const LJson::Json&) { ++count; });
+    REQUIRE(count == 3);
+    LTempFile temp;
+    LFile::WriteLinesOptions options;
+    options.final_newline = false;
+    temp.file().write_lines(std::vector<LString>{"one"}, options);
+    REQUIRE(temp.file().read_text() == "one");
+}

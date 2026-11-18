@@ -35,7 +35,9 @@ root.for_each_recursive([](auto&& node) {   // 用 auto&& 接收 JsonRef 才能�
 
 `JsonRef` 之间赋值写入的是值，不会改变引用目标。`JsonRef` 不应长期保存：父节点被整体替换后，旧引用不再反映文档内容。
 
-> 内存说明：yyjson 可变文档按 arena 分配，反复覆写节点不会释放旧值。长生命周期且频繁修改的对象可定期用 `LJson::parse(json.dump())` 重建。
+整数、布尔、浮点和 null 的重复赋值原地更新槽位。字符串替换、删除容器元素等仍会在 yyjson arena 留下历史分配。对长期维护的文档，可在一批修改结束后调用 `root.compact()`，按当前 DOM 大小复制到新 arena。复制期间两份 arena 同时存在。之前获取的 `JsonRef` 继续指向旧文档；释放这些引用后旧 arena 才能回收。压缩后重新从根获取需要写回的引用。
+
+只读扫描可用 `root.for_each_view([](const LJson::Json& node) { /* 读取 node */ });`。引用只在本次回调中有效；需要保存时按值复制。遍历期间请勿修改原文档。
 
 当前适配器：
 

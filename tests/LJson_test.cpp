@@ -407,3 +407,20 @@ TEST_CASE("Json accepts any integer type as array index", "[LJson][semantics]") 
     REQUIRE_THROWS_AS(view[-1], std::out_of_range);
     REQUIRE_THROWS_AS(json[-1], std::out_of_range);
 }
+
+TEST_CASE("compact preserves live values and detaches outstanding references") {
+    auto root = LJson::parse(R"({"n":0,"text":"old"})");
+    auto previous = root["n"];
+    for (int i = 0; i < 1000; ++i) root["n"] = i;
+    root.compact();
+    previous = -1;
+    REQUIRE(root["n"].as_int() == 999);
+    REQUIRE(previous.as_int() == -1);
+    REQUIRE_THROWS(previous.compact());
+    int visits = 0;
+    root.for_each_view([&](const LJson::Json& node) {
+        REQUIRE(node.exists());
+        ++visits;
+    });
+    REQUIRE(visits == 3);
+}

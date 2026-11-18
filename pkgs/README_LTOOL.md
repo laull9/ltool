@@ -68,3 +68,5 @@ Terminal-width detection itself lives in `ltool/LProgress.hpp`
 (`LProgress::detail::terminal_columns` / `resolve_bar_width`), so barkeep
 stays platform-agnostic. When upgrading the vendored header, re-apply these
 changes.
+
+yyjson 的单头实现用 diagnostic push/pop 限定上游的警告屏蔽范围，升级后须保留此边界。

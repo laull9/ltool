@@ -82,7 +82,7 @@
 #endif
 
 #ifndef LTOOL_USE_OPENSSL_SHA256
-#define LTOOL_USE_OPENSSL_SHA256 1
+#define LTOOL_USE_OPENSSL_SHA256 0
 #endif
 
 #ifndef LTOOL_USE_IMGUI

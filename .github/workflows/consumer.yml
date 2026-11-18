@@ -1,0 +1,29 @@
+name: Consumer integration
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  consume:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build from source
+        run: cmake -S tests/consumer -B build/source -DLTOOL_SOURCE="${{ github.workspace }}"
+      - run: cmake --build build/source --config Release
+      - run: ctest --test-dir build/source -C Release --output-on-failure
+      - run: cmake --install build/source --config Release --prefix "${{ github.workspace }}/build/prefix"
+      - name: Use installed package
+        run: cmake -S tests/consumer -B build/package -DCMAKE_PREFIX_PATH="${{ github.workspace }}/build/prefix"
+      - run: cmake --build build/package --config Release
+      - run: ctest --test-dir build/package -C Release --output-on-failure
+      - name: Check direct headers and installed Asio implementation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          c++ -std=c++20 -I. tests/consumer/main.cpp -o build/direct
+          build/direct
+          printf '#include "LString.hpp"\n' | c++ -std=c++11 -I. -x c++ -fsyntax-only -
+          printf '#include "LWeb.hpp"\n' | c++ -std=c++20 -Ibuild/prefix/include/ltool -x c++ -E - -o /dev/null

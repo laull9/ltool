@@ -61,3 +61,12 @@ TEST_CASE("LCli supports nested subcommands and default values", "[LCli]") {
     REQUIRE(leaf->positional(0) == "origin");
     REQUIRE(leaf->positional(1) == "https://example.com");
 }
+
+TEST_CASE("subcommands validate parent options but allow help") {
+    LCli app("tool");
+    app.value_option("config", 'c', "PATH", "", "", true);
+    app.subcommand("run");
+    REQUIRE_FALSE(app.parse(std::vector<std::string>{"run"}).ok());
+    REQUIRE(app.parse(std::vector<std::string>{"run", "--help"}).help_requested());
+    REQUIRE(app.parse(std::vector<std::string>{"-c", "dev", "run"}).ok());
+}

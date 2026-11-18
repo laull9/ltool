@@ -35,6 +35,7 @@ if(LTOOL_USE_EXTERNAL_FMT)
     find_package(fmt CONFIG REQUIRED)
     target_compile_definitions(ltool INTERFACE LTOOL_USE_EXTERNAL_FMT=1 LSTRING_USE_EXTERNAL_FMT=1)
     target_link_libraries(ltool INTERFACE fmt::fmt)
+    string(APPEND ltool_dependencies "find_dependency(fmt CONFIG)\n")
 endif()
 
 if(NOT LTOOL_USE_MAGIC_ENUM)
@@ -51,6 +52,7 @@ if(LTOOL_USE_NLOHMANN_JSON)
     find_package(nlohmann_json CONFIG QUIET)
     if(TARGET nlohmann_json::nlohmann_json)
         target_link_libraries(ltool INTERFACE nlohmann_json::nlohmann_json)
+        string(APPEND ltool_dependencies "find_dependency(nlohmann_json CONFIG)\n")
     endif()
 else()
     target_compile_definitions(ltool INTERFACE LTOOL_USE_NLOHMANN_JSON=0)
@@ -60,8 +62,10 @@ if(LTOOL_USE_JSONCPP)
     find_package(jsoncpp CONFIG QUIET)
     if(TARGET JsonCpp::JsonCpp)
         target_link_libraries(ltool INTERFACE JsonCpp::JsonCpp)
+        string(APPEND ltool_dependencies "find_dependency(jsoncpp CONFIG)\n")
     elseif(TARGET jsoncpp_lib)
         target_link_libraries(ltool INTERFACE jsoncpp_lib)
+        string(APPEND ltool_dependencies "find_dependency(jsoncpp CONFIG)\n")
     endif()
 else()
     target_compile_definitions(ltool INTERFACE LTOOL_USE_JSONCPP=0 LTOOL_USE_CPPJSON=0)
@@ -71,6 +75,7 @@ if(LTOOL_USE_SIMDJSON)
     find_package(simdjson CONFIG QUIET)
     if(TARGET simdjson::simdjson)
         target_link_libraries(ltool INTERFACE simdjson::simdjson)
+        string(APPEND ltool_dependencies "find_dependency(simdjson CONFIG)\n")
     endif()
 else()
     target_compile_definitions(ltool INTERFACE LTOOL_USE_SIMDJSON=0)
@@ -84,6 +89,7 @@ if(LTOOL_USE_OPENSSL_SHA256)
     find_package(OpenSSL QUIET)
     if(TARGET OpenSSL::Crypto)
         target_link_libraries(ltool INTERFACE OpenSSL::Crypto)
+        string(APPEND ltool_dependencies "find_dependency(OpenSSL)\n")
         target_compile_definitions(ltool INTERFACE LTOOL_USE_OPENSSL_SHA256=1)
     else()
         target_compile_definitions(ltool INTERFACE LTOOL_USE_OPENSSL_SHA256=0)
@@ -105,6 +111,7 @@ if(LTOOL_BUILD_MODULE)
         message(FATAL_ERROR "LTOOL_BUILD_MODULE requires CMake 3.28 or later")
     endif()
     add_library(ltool_module)
+    set_target_properties(ltool_module PROPERTIES EXPORT_NAME module)
     add_library(ltool::module ALIAS ltool_module)
     target_sources(ltool_module
         PUBLIC
@@ -116,13 +123,20 @@ if(LTOOL_BUILD_MODULE)
     target_link_libraries(ltool_module PUBLIC ltool)
 endif()
 
-install(
-    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ltool
-    FILES_MATCHING
-        PATTERN "*.h"
-        PATTERN "*.hpp"
-)
+file(GLOB ltool_headers CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp")
+install(FILES ${ltool_headers} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ltool)
+install(DIRECTORY detail pkgs DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ltool
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.ipp" PATTERN "*.S")
+
+include(CMakePackageConfigHelpers)
+configure_package_config_file(cmake/ltoolConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/ltoolConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ltool")
+write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/ltoolConfigVersion.cmake"
+    COMPATIBILITY SameMajorVersion)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/ltoolConfig.cmake"
+              "${CMAKE_CURRENT_BINARY_DIR}/ltoolConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ltool")
 
 install(
     TARGETS ltool

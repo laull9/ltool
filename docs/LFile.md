@@ -28,3 +28,5 @@ void file_example() {
     auto digest = tmp.sha256();
 }
 ```
+
+多行输出可用命名参数，例如 `file.write_lines(lines, LFile::WriteLinesOptions{.final_newline = false})`（指定初始化器需 C++20）。
