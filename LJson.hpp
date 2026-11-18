@@ -759,6 +759,7 @@ private:
         parent_ = nullptr;
         relation_ = relation_kind::root;
         revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;

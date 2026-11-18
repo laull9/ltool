@@ -16,6 +16,7 @@
 
 #include "detail/LToolConfig.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
