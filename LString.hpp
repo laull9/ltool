@@ -68,6 +68,7 @@
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <locale>
 #include <iostream>
 #include <regex>
 #include <sstream>
@@ -186,6 +187,16 @@ using wstring_view = std::wstring_view;
 
 template<class T>
 using optional = std::optional<T>;
+
+/// 检测标准库是否提供指定浮点类型的 from_chars 重载。
+template<class T, class = void>
+struct has_float_from_chars : std::false_type {};
+
+template<class T>
+struct has_float_from_chars<T, std::void_t<decltype(std::from_chars(
+    std::declval<const char*>(), std::declval<const char*>(), std::declval<T&>()))>>
+    : std::true_type {};
+
 
 inline constexpr std::nullopt_t nullopt = std::nullopt;
 #else
@@ -2575,7 +2586,7 @@ public:
         std::optional<T>,
         std::is_integral<T>::value && !std::is_same<T, bool>::value)
     to_number(int base = 10) const {
-        auto text = trimmed().view();
+        auto text = trimmed();
         T value {};
         auto begin = text.data();
         auto end = text.data() + text.size();
@@ -2598,13 +2609,18 @@ public:
         std::optional<T>,
         std::is_floating_point<T>::value)
     to_number() const {
-        auto text = trimmed().view();
+        auto text = trimmed();
         T value {};
         auto begin = text.data();
         auto end = text.data() + text.size();
-        auto [ptr, ec] = std::from_chars(begin, end, value);
-        if (ec == std::errc() && ptr == end) {
-            return value;
+        if constexpr (LStringDetail::has_float_from_chars<T>::value) {
+            auto [ptr, ec] = std::from_chars(begin, end, value);
+            if (ec == std::errc() && ptr == end) return value;
+        } else if (begin != end && *begin != '+') {
+            // 某些 libc++ 版本仅支持整数 from_chars；固定 C locale 并完整消费输入。
+            std::istringstream input(text.str());
+            input.imbue(std::locale::classic());
+            if ((input >> std::noskipws >> value) && input.eof()) return value;
         }
         return std::nullopt;
     }
