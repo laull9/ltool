@@ -22,6 +22,9 @@ add_library(ltool INTERFACE)
 add_library(ltool::ltool ALIAS ltool)
 
 target_compile_features(ltool INTERFACE cxx_std_11)
+target_compile_options(ltool INTERFACE
+    "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/utf-8>"
+)
 
 target_include_directories(ltool
     INTERFACE

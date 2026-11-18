@@ -87,3 +87,5 @@ cmake --install build/ltool
 ```
 
 安装后可使用 `find_package(ltool CONFIG REQUIRED)` 和 `ltool::ltool`。手动 include 默认使用内置 SHA-256；CMake 默认在可用时链接 OpenSSL。
+
+MSVC 直接编译时添加 `/utf-8`，使源码与执行字符集符合内置 fmt 的 Unicode 要求。CMake 目标自动传递此选项。
