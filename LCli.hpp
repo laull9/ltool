@@ -534,7 +534,10 @@ public:
                     if (sub_res->version_requested()) {
                         res.version_requested_ = true;
                     }
-                    return res;
+                    if (!sub_res->ok() || res.help_requested_ || res.version_requested_) {
+                        return res;
+                    }
+                    break;
                 }
             }
 

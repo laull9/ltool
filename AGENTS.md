@@ -67,8 +67,7 @@ ltool 是纯头文件 C++ 工具库（C++20 为主，部分模块兼容 C++11/17
   父节点被整体替换后它就不再反映文档内容。按类型判断 Json 时用 `LJson::detail::is_json_value<T>` 或
   `std::derived_from<T, LJson::Json>`，不要写 `std::is_same<T, LJson::Json>`，否则会漏掉 `JsonRef`；
   为 Json 特化 fmt/std::formatter、hash 等时也要同时特化 `JsonRef`。
-- **`Json` 内存只增不减**：yyjson 可变文档按 arena 分配，反复覆写同一节点不会释放旧值。长生命周期对象
-  若频繁修改，定期 `LJson::parse(json.dump())` 重建。
+- **yyjson arena**：固定大小标量原地更新；字符串与容器频繁替换后可调用根对象的 `compact()`。旧 JsonRef 保留旧 arena，压缩后重新取引用。
 - **`Locked<T>` 不可拷贝、不可移动**；回调接口 `with_read/with_write` 按值返回结果，防止引用逃出锁。
   `emplace()` 对不可赋值的 T 走“析构 + 原地构造”，此时构造抛异常会 `std::terminate`。
 - **日志位置**：只有 `LLOG_*` 宏能记录调用方位置；直接调用 `LLog::info()` 或 `writef()` 时，位置是函数默认参数处或 LLog 内部。

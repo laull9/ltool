@@ -50,7 +50,6 @@ TEST_CASE("Locked supports one writer and multiple readers", "[Locked]") {
     constexpr int write_count = 10000;
 
     std::atomic<bool> start{false};
-    std::atomic<bool> writer_done{false};
     std::atomic<int> read_error_count{0};
 
     std::thread writer([&] {
@@ -64,7 +63,6 @@ TEST_CASE("Locked supports one writer and multiple readers", "[Locked]") {
             });
         }
 
-        writer_done.store(true, std::memory_order_release);
     });
 
     std::vector<std::thread> readers;
@@ -78,7 +76,8 @@ TEST_CASE("Locked supports one writer and multiple readers", "[Locked]") {
 
             int last = -1;
 
-            while (!writer_done.load(std::memory_order_acquire)) {
+            // shared_mutex 不保证写者优先；有界读循环不依赖锁调度的公平性。
+            for (int sample = 0; sample < write_count; ++sample) {
                 int current = value.with_read([](const int& v) {
                     return v;
                 });
@@ -156,11 +155,10 @@ TEST_CASE("Locked::emplace takes the write lock", "[Locked]") {
     // 读者始终应看到完整的 vector（大小与首元素一致）；emplace 不加锁时
     // 读者可能观察到正在析构/构造中的对象（TSan 下会报数据竞争）。
     Locked<std::vector<int>> value(std::vector<int>(4, 4));
-    std::atomic<bool> done{false};
     std::atomic<int> torn{0};
 
     std::thread reader([&] {
-        while (!done.load(std::memory_order_acquire)) {
+        for (int sample = 0; sample < 10000; ++sample) {
             value.with_read([&](const std::vector<int>& v) {
                 if (v.empty() || static_cast<int>(v.size()) != v.front()) {
                     torn.fetch_add(1, std::memory_order_relaxed);
@@ -173,7 +171,6 @@ TEST_CASE("Locked::emplace takes the write lock", "[Locked]") {
         const int n = i % 16 + 1;
         value.emplace(static_cast<std::size_t>(n), n);
     }
-    done.store(true, std::memory_order_release);
     reader.join();
 
     REQUIRE(torn.load() == 0);

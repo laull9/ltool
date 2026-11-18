@@ -36,18 +36,21 @@
  *============================================================================*/
 
 #if defined(__clang__)
+#pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-function"
 #pragma clang diagnostic ignored "-Wunused-parameter"
 #pragma clang diagnostic ignored "-Wunused-label"
 #pragma clang diagnostic ignored "-Wunused-macros"
 #pragma clang diagnostic ignored "-Wunused-variable"
 #elif defined(__GNUC__)
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-label"
 #pragma GCC diagnostic ignored "-Wunused-macros"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #elif defined(_MSC_VER)
+#pragma warning(push)
 #pragma warning(disable : 4100) /* unreferenced formal parameter */
 #pragma warning(disable : 4101) /* unreferenced variable */
 #pragma warning(disable : 4102) /* unreferenced label */
@@ -11074,5 +11077,13 @@ static yyjson_mut_val *yyjson_mut_merge_patch(yyjson_mut_doc *doc,
 }
 
 #endif /* YYJSON_DISABLE_UTILS */
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #endif

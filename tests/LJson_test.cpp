@@ -407,3 +407,38 @@ TEST_CASE("Json accepts any integer type as array index", "[LJson][semantics]") 
     REQUIRE_THROWS_AS(view[-1], std::out_of_range);
     REQUIRE_THROWS_AS(json[-1], std::out_of_range);
 }
+
+TEST_CASE("compact preserves live values and detaches outstanding references") {
+    auto root = LJson::parse(R"({"n":0,"text":"old"})");
+    auto previous = root["n"];
+    for (int i = 0; i < 1000; ++i) root["n"] = i;
+    root.compact();
+    previous = -1;
+    REQUIRE(root["n"].as_int() == 999);
+    REQUIRE(previous.as_int() == -1);
+    REQUIRE_THROWS(previous.compact());
+    int visits = 0;
+    root.for_each_view([&](const LJson::Json& node) {
+        REQUIRE(node.exists());
+        ++visits;
+    });
+    REQUIRE(visits == 3);
+}
+
+TEST_CASE("text views remain stable across reads and refresh independently after writes") {
+    auto root = LJson::parse(R"({"a":"abcdefghijklmnopqrstuvwxyz","b":2})");
+    auto a = root["a"];
+    auto b = root["b"];
+    const auto first = root.view();
+    REQUIRE(root.size() == first.size());
+    REQUIRE(root.data() == first.data());
+    REQUIRE(std::string(first.data(), first.size()) == root.dump());
+    a = std::string(300, 'z');
+    REQUIRE(b.str() == "2");
+    REQUIRE(root.str() == root.dump());
+    REQUIRE(a.str() == a.dump());
+    auto root_ref = root.pointer("");
+    root_ref = LJson::parse("[10]");
+    REQUIRE(root.str() == "[10]");
+    REQUIRE(root_ref.str() == "[10]");
+}

@@ -203,22 +203,16 @@ inline void sync_file_to_disk(const std::filesystem::path& path) {
 
 /// 原子替换：把临时文件 rename 到目标路径。
 ///
-/// POSIX 上 rename(2) 在同一文件系统内原子覆盖已存在目标；
-/// Windows 上 rename 无法覆盖已存在目标，需先删除目标再重命名，
-/// 两步之间存在目标文件短暂缺失的窗口期（可接受）。
 inline void atomic_replace(const std::filesystem::path& temp_path,
                            const std::filesystem::path& target) {
-    std::error_code ec;
 #if LTOOL_PLATFORM_WINDOWS
-    std::filesystem::remove(target, ec);
-    if (ec && ec != std::errc::no_such_file_or_directory) {
-        throw LPathDetail::make_error("cannot remove target before replacing", target);
-    }
-    std::filesystem::rename(temp_path, target, ec);
-    if (ec) {
-        throw LPathDetail::make_error("cannot replace file", target);
+    if (!::MoveFileExW(temp_path.c_str(), target.c_str(),
+                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        throw std::filesystem::filesystem_error("cannot replace file", temp_path, target,
+            std::error_code(static_cast<int>(::GetLastError()), std::system_category()));
     }
 #else
+    std::error_code ec;
     std::filesystem::rename(temp_path, target, ec);
     if (ec) {
         throw LPathDetail::make_error("cannot replace file", target);
@@ -750,6 +744,23 @@ public:
         return *this;
     }
 
+    /// 写入多行文本时的编码、分隔符和目录选项。
+    struct WriteLinesOptions {
+        std::string newline = "\n";
+        bool final_newline = true;
+        LEncoding encoding = LEncoding::Utf8;
+        bool write_bom = false;
+        bool strict = true;
+        bool create_parent = true;
+    };
+
+    /// 使用命名选项覆盖写入多行文本。
+    template<class Range>
+    LFile& write_lines(const Range& lines, const WriteLinesOptions& opts) {
+        return write_lines(lines, opts.newline, opts.final_newline, opts.encoding,
+                           opts.write_bom, opts.strict, opts.create_parent);
+    }
+
     /// 覆盖写入多行文本。
     template<class Range LTOOL_ENABLE_IF(LTool::traits::is_const_range<Range>::value)>
         LTOOL_REQUIRES(LTool::concepts::ConstRange<Range>)
@@ -1167,6 +1178,15 @@ public:
     }
 
     /// 覆盖写入多行文本。
+    template<class Range LTOOL_ENABLE_IF(LTool::traits::is_const_range<Range>::value)>
+        LTOOL_REQUIRES(LTool::concepts::ConstRange<Range>)
+    static void write_lines(const std::filesystem::path& path, const Range& lines,
+                            const WriteLinesOptions& opts) {
+        write_lines(path, lines, opts.newline, opts.final_newline, opts.encoding,
+                    opts.write_bom, opts.strict, opts.create_parent);
+    }
+
+    /// 使用显式参数覆盖写入多行文本。
     template<class Range LTOOL_ENABLE_IF(LTool::traits::is_const_range<Range>::value)>
         LTOOL_REQUIRES(LTool::concepts::ConstRange<Range>)
     static void write_lines(const std::filesystem::path& path, const Range& lines,

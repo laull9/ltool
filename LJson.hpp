@@ -193,28 +193,32 @@ inline std::string take_yyjson_string(char* data, std::size_t size) {
 inline std::string yyjson_to_string(yyjson_doc* doc,
                                     yyjson_write_flag flags = YYJSON_WRITE_NOFLAG) {
     size_t size = 0;
-    return take_yyjson_string(yyjson_write(doc, flags, &size), size);
+    char* data = yyjson_write(doc, flags, &size);
+    return take_yyjson_string(data, size);
 }
 
 /// 序列化只读 yyjson_val。
 inline std::string yyjson_to_string(yyjson_val* value,
                                     yyjson_write_flag flags = YYJSON_WRITE_NOFLAG) {
     size_t size = 0;
-    return take_yyjson_string(yyjson_val_write(value, flags, &size), size);
+    char* data = yyjson_val_write(value, flags, &size);
+    return take_yyjson_string(data, size);
 }
 
 /// 序列化可变 yyjson_mut_doc。
 inline std::string yyjson_to_string(yyjson_mut_doc* doc,
                                     yyjson_write_flag flags = YYJSON_WRITE_NOFLAG) {
     size_t size = 0;
-    return take_yyjson_string(yyjson_mut_write(doc, flags, &size), size);
+    char* data = yyjson_mut_write(doc, flags, &size);
+    return take_yyjson_string(data, size);
 }
 
 /// 序列化可变 yyjson_mut_val。
 inline std::string yyjson_to_string(yyjson_mut_val* value,
                                     yyjson_write_flag flags = YYJSON_WRITE_NOFLAG) {
     size_t size = 0;
-    return take_yyjson_string(yyjson_mut_val_write(value, flags, &size), size);
+    char* data = yyjson_mut_val_write(value, flags, &size);
+    return take_yyjson_string(data, size);
 }
 
 /// 把缩进参数映射为 yyjson 写标志；仅支持 0/2/4。
@@ -503,6 +507,7 @@ private:
     /// 当前节点与父节点的关系。
     enum class relation_kind {
         root,   ///< 文档根节点。
+        borrowed, ///< 只读遍历期间借用的节点。
         object, ///< 父节点对象的某个键。
         array   ///< 父节点数组的某个下标。
     };
@@ -522,7 +527,8 @@ private:
     mutable relation_kind relation_ = relation_kind::root;  ///< 与父节点的关系。
     mutable std::string key_;                               ///< 在父对象中的键。
     mutable std::size_t index_ = 0;                         ///< 在父数组中的下标。
-    mutable std::shared_ptr<bool> text_dirty_;              ///< 文本是否已修改。
+    mutable std::shared_ptr<std::uint64_t> revision_;              ///< 文档共享的修改序号。
+    mutable std::uint64_t cached_revision_ = 0; ///< 本对象文本对应的修改序号。
     mutable std::shared_ptr<array_index_cache> array_cache_; ///< 数组缓存。
     bool proxy_ = false;                                    ///< 是否为代理视图。
     bool valid_ = true;                                     ///< 是否引用有效值。
@@ -601,7 +607,8 @@ private:
           relation_(other.relation_),
           key_(other.key_),
           index_(other.index_),
-          text_dirty_(other.text_dirty_),
+          revision_(other.revision_),
+          cached_revision_(other.cached_revision_),
           array_cache_(other.array_cache_),
           proxy_(other.proxy_),
           valid_(other.valid_) {}
@@ -615,9 +622,6 @@ private:
         }
         if (other.value_) {
             init_from_value_copy(other.value_);
-            if (text_dirty_) {
-                *text_dirty_ = false;
-            }
         }
     }
 
@@ -628,7 +632,7 @@ private:
          relation_kind relation,
          std::string key,
          std::size_t index,
-         std::shared_ptr<bool> text_dirty,
+         std::shared_ptr<std::uint64_t> revision,
          std::shared_ptr<array_index_cache> array_cache,
          bool proxy)
         : doc_(std::move(doc)),
@@ -637,7 +641,7 @@ private:
           relation_(relation),
           key_(std::move(key)),
           index_(index),
-          text_dirty_(std::move(text_dirty)),
+          revision_(std::move(revision)),
           array_cache_(std::move(array_cache)),
           proxy_(proxy) {}
 
@@ -649,7 +653,8 @@ private:
         yyjson_mut_doc_set_root(doc_.get(), value_);
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
@@ -670,7 +675,8 @@ private:
         value_ = yyjson_mut_doc_get_root(doc_.get());
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
@@ -691,7 +697,8 @@ private:
         value_ = yyjson_mut_doc_get_root(doc_.get());
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
@@ -703,7 +710,8 @@ private:
         value_ = value ? yyjson_val_mut_copy(doc_.get(), value) : yyjson_mut_null(doc_.get());
         value_ = require_value(value_);
         yyjson_mut_doc_set_root(doc_.get(), value_);
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
@@ -714,7 +722,8 @@ private:
         value_ = value ? yyjson_mut_val_mut_copy(doc_.get(), value) : yyjson_mut_null(doc_.get());
         value_ = require_value(value_);
         yyjson_mut_doc_set_root(doc_.get(), value_);
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
@@ -723,9 +732,6 @@ private:
     void parse_text_now(JsonView text) {
         if (text.empty()) {
             init_root([](yyjson_mut_doc* target) { return yyjson_mut_null(target); });
-            if (text_dirty_) {
-                *text_dirty_ = false;
-            }
             return;
         }
 
@@ -752,7 +758,8 @@ private:
         }
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(false);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         proxy_ = false;
         valid_ = true;
@@ -805,10 +812,10 @@ private:
 
     /// 标记文本已脏（下次读取需重新序列化）。
     void mark_dirty() {
-        if (!text_dirty_) {
-            text_dirty_ = std::make_shared<bool>(false);
+        if (!revision_) {
+            revision_ = std::make_shared<std::uint64_t>(1);
         }
-        *text_dirty_ = true;
+        ++*revision_;
     }
 
     /// 清空数组缓存。
@@ -827,14 +834,11 @@ private:
 
     /// 同步文本缓存为当前值序列化结果。
     void sync_text() const {
-        if (!value_) {
+        if (!value_ || (revision_ && cached_revision_ == *revision_)) {
             return;
         }
-
-        text_ = write_value(value_);
-        if (!proxy_ && text_dirty_) {
-            *text_dirty_ = false;
-        }
+        text_ = write_value(const_value());
+        if (revision_) cached_revision_ = *revision_;
     }
 
     /// 序列化当前节点；indent>0 时格式化。
@@ -852,7 +856,6 @@ private:
             value_ = value;
             parent_ = nullptr;
             relation_ = relation_kind::root;
-            proxy_ = false;
             mark_dirty();
             return;
         }
@@ -891,7 +894,8 @@ private:
         yyjson_mut_doc_set_root(doc_.get(), value_);
         parent_ = nullptr;
         relation_ = relation_kind::root;
-        text_dirty_ = std::make_shared<bool>(true);
+        revision_ = std::make_shared<std::uint64_t>(1);
+        cached_revision_ = 0;
         array_cache_ = std::make_shared<array_index_cache>();
         valid_ = true;
     }
@@ -899,6 +903,35 @@ private:
     /// 从另一个 Json 复制值。
     void set_value_from(const Json& value) {
         set_value_from(value.const_value());
+    }
+
+    /// 原地写入固定大小标量，复用当前槽位与对象键，避免每次赋值消耗 arena。
+    template<class Scalar>
+    void set_scalar(Scalar value) {
+        if (!doc_) {
+            init_root([](yyjson_mut_doc* doc) { return yyjson_mut_null(doc); });
+        }
+        if (relation_ == relation_kind::root) {
+            value_ = yyjson_mut_doc_get_root(doc_.get());
+        } else if (relation_ == relation_kind::object) {
+            value_ = object_child(doc_.get(), parent_, key_);
+        } else {
+            value_ = array_child_const(parent_, index_);
+        }
+        if (yyjson_mut_is_arr(value_)) clear_array_cache();
+        if constexpr (std::is_same_v<Scalar, std::nullptr_t>) {
+            yyjson_mut_set_null(value_);
+        } else if constexpr (std::is_same_v<Scalar, bool>) {
+            yyjson_mut_set_bool(value_, value);
+        } else if constexpr (std::is_floating_point_v<Scalar>) {
+            yyjson_mut_set_real(value_, value);
+        } else if constexpr (std::is_signed_v<Scalar>) {
+            yyjson_mut_set_sint(value_, value);
+        } else {
+            yyjson_mut_set_uint(value_, value);
+        }
+        mark_dirty();
+        valid_ = true;
     }
 
     /// 用工厂回调创建新值并替换当前值。
@@ -1210,9 +1243,6 @@ private:
     Json make_detached_copy(yyjson_mut_val* value) const {
         Json out;
         out.init_from_value_copy(value);
-        if (out.text_dirty_) {
-            *out.text_dirty_ = true;
-        }
         return out;
     }
 
@@ -1341,28 +1371,50 @@ private:
     void for_each_recursive_impl(yyjson_mut_val* value, Visitor&& visitor);
 
     /// 深度优先遍历每个节点并调用 visitor（只读版，传入独立副本）。
-    template<class Visitor>
+    template<bool Borrow = false, class Visitor>
     void for_each_recursive_impl(yyjson_mut_val* value, Visitor&& visitor) const {
-        visitor(make_detached_copy(value));
+        if constexpr (Borrow) {
+            const Json view(doc_, value, nullptr, relation_kind::borrowed, {}, 0,
+                            revision_, array_cache_, true);
+            visitor(view);
+        } else {
+            visitor(make_detached_copy(value));
+        }
         if (yyjson_mut_is_obj(value)) {
             std::size_t idx = 0;
             std::size_t max = 0;
             yyjson_mut_val* obj_key = nullptr;
             yyjson_mut_val* obj_value = nullptr;
             yyjson_mut_obj_foreach(value, idx, max, obj_key, obj_value) {
-                for_each_recursive_impl(obj_value, visitor);
+                for_each_recursive_impl<Borrow>(obj_value, visitor);
             }
         } else if (yyjson_mut_is_arr(value)) {
             std::size_t idx = 0;
             std::size_t max = 0;
             yyjson_mut_val* item = nullptr;
             yyjson_mut_arr_foreach(value, idx, max, item) {
-                for_each_recursive_impl(item, visitor);
+                for_each_recursive_impl<Borrow>(item, visitor);
             }
         }
     }
 
 public:
+    /// 将当前根文档复制进新 arena，释放历史分配。已有引用继续持有旧文档。
+    void compact() {
+        if (proxy_) {
+            throw std::logic_error("compact requires an owning Json");
+        }
+        Json fresh;
+        fresh.init_from_value_copy(const_value());
+        *this = std::move(fresh);
+    }
+
+    /// 只读深度优先遍历。回调期间不可修改原文档；按值复制可保留节点快照。
+    template<class Visitor>
+    void for_each_view(Visitor&& visitor) const {
+        for_each_recursive_impl<true>(const_value(), visitor);
+    }
+
     /// 默认构造：惰性 null 值。
     Json() = default;
 
@@ -1387,7 +1439,8 @@ public:
         relation_ = other.relation_;
         key_ = std::move(other.key_);
         index_ = other.index_;
-        text_dirty_ = std::move(other.text_dirty_);
+        revision_ = std::move(other.revision_);
+        cached_revision_ = other.cached_revision_;
         array_cache_ = std::move(other.array_cache_);
         valid_ = other.valid_;
         other.value_ = nullptr;
@@ -1414,13 +1467,10 @@ public:
         }
         if (other.value_) {
             init_from_value_copy(other.value_);
-            if (text_dirty_) {
-                *text_dirty_ = false;
-            }
         } else {
             doc_.reset();
             value_ = nullptr;
-            text_dirty_.reset();
+            revision_.reset();
             array_cache_.reset();
         }
         parent_ = nullptr;
@@ -1451,7 +1501,8 @@ public:
         relation_ = other.relation_;
         key_ = std::move(other.key_);
         index_ = other.index_;
-        text_dirty_ = std::move(other.text_dirty_);
+        revision_ = std::move(other.revision_);
+        cached_revision_ = other.cached_revision_;
         array_cache_ = std::move(other.array_cache_);
         proxy_ = other.proxy_;
         valid_ = other.valid_;
@@ -1544,56 +1595,56 @@ public:
     }
 
     /// 赋值为 JSON null。
-    Json& operator=(std::nullptr_t) {
-        set_value([](yyjson_mut_doc* doc) { return yyjson_mut_null(doc); });
+    Json& operator=(std::nullptr_t value) {
+        set_scalar(value);
         return *this;
     }
 
     /// 赋值为 JSON 布尔。
     Json& operator=(bool value) {
-        set_value([&](yyjson_mut_doc* doc) { return yyjson_mut_bool(doc, value); });
+        set_scalar(value);
         return *this;
     }
 
     /// 赋值为 JSON 整数。
     Json& operator=(int value) {
-        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+        set_scalar(value);
         return *this;
     }
 
     /// 赋值为 JSON 整数。
     Json& operator=(unsigned int value) {
-        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+        set_scalar(value);
         return *this;
     }
 
     /// 赋值为 JSON 整数。
     Json& operator=(long value) {
-        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+        set_scalar(value);
         return *this;
     }
 
     /// 赋值为 JSON 整数。
     Json& operator=(unsigned long value) {
-        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+        set_scalar(value);
         return *this;
     }
 
     /// 赋值为 JSON 整数。
     Json& operator=(long long value) {
-        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+        set_scalar(value);
         return *this;
     }
 
     /// 赋值为 JSON 整数。
     Json& operator=(unsigned long long value) {
-        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+        set_scalar(value);
         return *this;
     }
 
     /// 赋值为 JSON 浮点数。
     Json& operator=(double value) {
-        set_value([&](yyjson_mut_doc* doc) { return make_number(doc, value); });
+        set_scalar(value);
         return *this;
     }
 
@@ -1682,7 +1733,8 @@ public:
 
     /// 返回当前文本的零拷贝视图。
     JsonView view() const noexcept {
-        return JsonView(data(), size());
+        const auto& text = str();
+        return JsonView(text.data(), text.size());
     }
 
     /// 隐式转换为视图。
@@ -2412,7 +2464,7 @@ inline JsonRef Json::make_proxy(yyjson_mut_val* value,
                                 std::string key,
                                 std::size_t index) const {
     Json proxy(doc_, value, parent, relation, std::move(key), index,
-               text_dirty_, array_cache_, true);
+               revision_, array_cache_, true);
     return JsonRef(proxy, share_tag{});
 }
 

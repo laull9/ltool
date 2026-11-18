@@ -227,6 +227,8 @@ TEST_CASE("LString formats and parses numbers", "[LString]") {
 #endif // LSTRING_HAS_STD_FORMAT
     REQUIRE(LString(" 2a ").to_int(16) == 42);
     REQUIRE(LString(" 3.25 ").to_double() == 3.25);
+    REQUIRE(LString(" 000000000000000000000000003.25 ").to_double() == 3.25);
+    REQUIRE(LString(" 000000000000000000000000003 ").to_int() == 3);
     REQUIRE_FALSE(LString("3.25x").to_double().has_value());
     REQUIRE(LString::from_number(1234) == "1234");
 }
